@@ -1,0 +1,35 @@
+{
+  "event_title": "Julklappsspelet – Secret Santa",
+  "budget_info": "Ca 300 kr per julklapp",
+  "participants": [
+    { "name": "Anders", "is_kid": false, "wishlist": "En god bok, kaffebönor eller varma ullstrumpor" },
+    { "name": "Anna", "is_kid": false, "wishlist": "Doftljus, te i lösvikt eller pussel" },
+    { "name": "Erik", "is_kid": false, "wishlist": "Brädspel, chokladpraliner eller verktyg" },
+    { "name": "Sara", "is_kid": false, "wishlist": "Hudvård, kokbok eller mysfilt" },
+    { "name": "Johan", "is_kid": false, "wishlist": "Löparstrumpor, termosmugg eller lakrits" },
+    { "name": "Maja", "is_kid": false, "wishlist": "Akvarellfärger, anteckningsbok eller biobiljett" },
+    { "name": "Leo", "is_kid": true, "wishlist": "LEGO, fotboll eller målarbok" },
+    { "name": "Elsa", "is_kid": true, "wishlist": "Pysselset, gosedjur eller pärlor" }
+  ],
+  "exclusions": [
+    ["Anders", "Anna"],
+    ["Erik", "Sara"]
+  ],
+  "aliases": [
+    "Glittrande Renen",
+    "Smygande Tomten",
+    "Knäckhäxan",
+    "Rimstjärnan",
+    "Pepparkaksriddaren",
+    "Snöflingeprinsen",
+    "Polkagrisräven",
+    "Julmustbaronen",
+    "Saffransdraken",
+    "Kanelbullespion",
+    "Midvinterugglan",
+    "Lingonälvan",
+    "Lussekattkungen",
+    "Marsipangrisen",
+    "Isbjörnsdansaren"
+  ]
+}

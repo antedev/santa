@@ -1,0 +1,15 @@
+services:
+  secret-santa:
+    build: .
+    container_name: secret-santa
+    restart: unless-stopped
+    ports:
+      - "${SANTA_PORT:-8085}:8080"
+    environment:
+      - SECRET_SANTA_DB=/app/data/secret_santa.db
+      - SECRET_SANTA_SEED=/app/seed.json
+      - SECRET_SANTA_ADMIN_PASSWORD=${SECRET_SANTA_ADMIN_PASSWORD:-tomten}
+      - SECRET_SANTA_DEV_MODE=${SECRET_SANTA_DEV_MODE:-1}
+    volumes:
+      - ./data:/app/data
+      - ./seed.json:/app/seed.json
