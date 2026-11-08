@@ -20,7 +20,7 @@
   <nav id="mainNav" class="tabs hidden" role="tablist">
     <button class="tab-btn active" data-tab="tab-my-santa" role="tab">🎅 Min Julklapp</button>
     <button class="tab-btn" data-tab="tab-kids" role="tab">👶 Barnens önskelistor</button>
-    <button class="tab-btn" data-tab="tab-chain" role="tab">🔗 Kedjan</button>
+    <button class="tab-btn" data-tab="tab-chain" role="tab">🎭 Täcknamn &amp; Status</button>
     <button id="adminTabBtn" class="tab-btn hidden" data-tab="tab-admin" role="tab">⚙️ Admin</button>
   </nav>
 
@@ -100,7 +100,7 @@
           <div id="myAliasCard" class="my-alias-highlight-card hidden">
             <span class="my-alias-label">🎭 Ditt hemliga täcknamn</span>
             <div class="my-alias-value" id="myAliasText"></div>
-            <span class="my-alias-hint">Det är det här namnet som är du under fliken <strong>🔗 Kedjan</strong></span>
+            <span class="my-alias-hint">Det är det här namnet som är du under fliken <strong>🎭 Täcknamn &amp; Status</strong></span>
           </div>
 
           <!-- Ready to spin the lottery wheel (Both Adults and Kids who want to join!) -->
@@ -160,14 +160,14 @@
         </div>
       </section>
 
-      <!-- TAB 3: KEDJAN (PUBLIC ALIAS VERIFICATION) -->
+      <!-- TAB 3: TÄCKNAMN & STATUS (PUBLIC ALIAS STATUS WITHOUT LEAKING NEIGHBORS) -->
       <section id="tab-chain" class="tab-panel">
         <div class="card">
-          <h2>🔗 Hela julklappskedjan</h2>
+          <h2>🎭 Täcknamn &amp; Status</h2>
           <p class="muted">
-            Här syns att alla vuxna hänger ihop i en enda stor cirkel (ingen A ↔ B) med sina hemliga täcknamn, och vilka som har dragit sin lott.
+            Alla 6 vuxna är ihopkopplade i en enda sluten cirkel (ingen ger tillbaka till samma person som man får av).
+            Här visas alla täcknamn i bokstavsordning så att du kan se hur många som har dragit sin lott utan att någon kan räkna ut vem som har vilket täcknamn!
           </p>
-          <div id="chainVisualization" class="chain-box"></div>
           <div id="aliasStatusGrid" class="alias-status-grid"></div>
         </div>
       </section>
@@ -265,6 +265,6 @@
     <span>🎄 Julklappsspelet</span>
   </footer>
 
-  <script src="/static/app.js?v=20261108-4"></script>
+  <script src="/static/app.js?v=20261108-5"></script>
 </body>
 </html>

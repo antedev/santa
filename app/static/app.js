@@ -374,59 +374,16 @@ function renderKidsWishlists() {
   });
 }
 
-// --- Tab 3: Kedjan ---
+// --- Tab 3: Täcknamn & Status ---
 
 function renderChainVerification() {
-  const chainBox = document.getElementById("chainVisualization");
   const statusGrid = document.getElementById("aliasStatusGrid");
-
-  chainBox.innerHTML = "";
+  if (!statusGrid) return;
   statusGrid.innerHTML = "";
 
-  if (!appState.draw_generated || appState.alias_cycle.length === 0) {
-    chainBox.innerHTML = `<span class="muted">Ingen kedja genererad än.</span>`;
+  if (!appState.draw_generated || appState.alias_board.length === 0) {
+    statusGrid.innerHTML = `<span class="muted">Inga täcknamn tilldelade än.</span>`;
     return;
-  }
-
-  appState.alias_cycle.forEach((alias) => {
-    const node = document.createElement("span");
-    node.className = "chain-node";
-    node.textContent = `🎭 ${alias}`;
-    chainBox.appendChild(node);
-
-    const arrow = document.createElement("span");
-    arrow.className = "chain-arrow";
-    arrow.textContent = "➔";
-    chainBox.appendChild(arrow);
-  });
-
-  const firstNode = document.createElement("span");
-  firstNode.className = "chain-node loop-back";
-  firstNode.textContent = `🎭 ${appState.alias_cycle[0]}`;
-  chainBox.appendChild(firstNode);
-
-  // Also render any kid bonus arrows (kid_alias -> target_alias) once drawn
-  const kidBonuses = appState.alias_board.filter(
-    (item) => item.is_kid_bonus && item.has_drawn && item.target_alias
-  );
-  if (kidBonuses.length > 0) {
-    kidBonuses.forEach((kb) => {
-      const row = document.createElement("div");
-      row.style.width = "100%";
-      row.style.display = "flex";
-      row.style.justifyContent = "center";
-      row.style.alignItems = "center";
-      row.style.gap = "0.45rem";
-      row.style.marginTop = "0.65rem";
-      row.style.paddingTop = "0.65rem";
-      row.style.borderTop = "1px dashed rgba(240, 194, 101, 0.25)";
-      row.innerHTML = `
-        <span class="chain-node">🎭 ${escapeHtml(kb.alias_name)} (Bonuslott)</span>
-        <span class="chain-arrow">➔</span>
-        <span class="chain-node loop-back">🎭 ${escapeHtml(kb.target_alias)}</span>
-      `;
-      chainBox.appendChild(row);
-    });
   }
 
   appState.alias_board.forEach((item) => {

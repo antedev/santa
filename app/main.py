@@ -486,7 +486,6 @@ def get_state():
             ],
             "exclusions": exclusions,
             "aliases_pool": json.loads(get_setting(conn, "alias_pool_json", "[]")),
-            "alias_cycle": json.loads(get_setting(conn, "alias_cycle_json", "[]")),
             "alias_board": alias_board,
         }
     finally:
