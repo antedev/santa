@@ -91,6 +91,10 @@ def init_db(db_path: Optional[Path] = None, seed_path: Optional[Path] = None) ->
         if "is_kid_bonus" not in alias_cols:
             conn.execute("ALTER TABLE alias_board ADD COLUMN is_kid_bonus INTEGER NOT NULL DEFAULT 0")
 
+        # Always purge any legacy plaintext debug cycle from settings
+        conn.execute("DELETE FROM settings WHERE key = 'dev_debug_cycle_json'")
+        set_setting(conn, "dev_mode_enabled", "0")
+
         if not get_setting(conn, "server_salt"):
             set_setting(conn, "server_salt", generate_salt())
 
@@ -145,10 +149,9 @@ def load_seed_into_db(conn: sqlite3.Connection, seed_path: Path) -> None:
     set_setting(conn, "budget_info", data.get("budget_info", "Secret Santa för familjen"))
     set_setting(conn, "draw_generated", "0")
     set_setting(conn, "is_live", "0")
-    set_setting(conn, "dev_mode_enabled", "1" if DEV_MODE_ENV else "0")
+    set_setting(conn, "dev_mode_enabled", "0")
     set_setting(conn, "alias_pool_json", json.dumps(data.get("aliases", []), ensure_ascii=False))
     set_setting(conn, "alias_cycle_json", "[]")
-    set_setting(conn, "dev_debug_cycle_json", "[]")
     set_setting(conn, "server_salt", generate_salt())
 
     name_to_id: Dict[str, int] = {}

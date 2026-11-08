@@ -88,10 +88,10 @@ def test_full_workflow_invite_links_and_kids_bonus_lottery(tmp_path: Path, monke
             for p in state["participants"]:
                 assert p["name"] not in enc
 
-        # 3. Go Live -> wipes dev_debug_cycle from DB and API
+        # 3. Go Live -> locks setup
         live_res = client.post("/api/admin/go-live", json={"admin_password": "tomten"})
         assert live_res.status_code == 200
-        assert client.get("/api/state").json()["dev_debug_cycle"] == []
+        assert "dev_debug_cycle" not in client.get("/api/state").json()
 
         # 4. First-time login WITHOUT personal invite token is blocked (prevents account hijacking!)
         p1 = adults[0]

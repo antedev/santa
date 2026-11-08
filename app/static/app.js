@@ -515,31 +515,6 @@ function renderAdminPanel() {
     if (idx === 1) optB.selected = true;
     selB.appendChild(optB);
   });
-
-  const devBox = document.getElementById("devInspectorBox");
-  const devTableContainer = document.getElementById("devCycleTableContainer");
-  if (appState.dev_mode_enabled && appState.dev_debug_cycle && appState.dev_debug_cycle.length > 0) {
-    devBox.classList.remove("hidden");
-    const rowsHtml = appState.dev_debug_cycle
-      .map(
-        (step) => `
-        <tr>
-          <td><strong>${escapeHtml(step.giver_name)}</strong> (${escapeHtml(step.giver_alias)})${step.is_kid_bonus ? " 👶 Bonus" : ""}</td>
-          <td>➔</td>
-          <td><strong>${escapeHtml(step.target_name)}</strong></td>
-        </tr>
-      `
-      )
-      .join("");
-    devTableContainer.innerHTML = `
-      <table class="dev-table">
-        <tbody>${rowsHtml}</tbody>
-      </table>
-    `;
-  } else {
-    devBox.classList.add("hidden");
-    devTableContainer.innerHTML = "";
-  }
 }
 
 window.copySingleLink = async function (name, token) {

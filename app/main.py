@@ -276,12 +276,7 @@ def _perform_draw_generation(
 
     set_setting(conn, "alias_cycle_json", json.dumps(alias_cycle, ensure_ascii=False))
     set_setting(conn, "draw_generated", "1")
-
-    dev_enabled = get_setting(conn, "dev_mode_enabled", "1" if DEV_MODE_ENV else "0") == "1" and DEV_MODE_ENV
-    if dev_enabled:
-        set_setting(conn, "dev_debug_cycle_json", json.dumps(dev_debug_cycle, ensure_ascii=False))
-    else:
-        set_setting(conn, "dev_debug_cycle_json", "[]")
+    conn.execute("DELETE FROM settings WHERE key = 'dev_debug_cycle_json'")
 
     return {
         "alias_cycle": alias_cycle,
@@ -457,22 +452,12 @@ def get_state():
         ]
 
         is_live = get_setting(conn, "is_live", "0") == "1"
-        dev_mode_enabled = (
-            DEV_MODE_ENV
-            and not is_live
-            and get_setting(conn, "dev_mode_enabled", "1") == "1"
-        )
-
-        dev_debug_cycle = []
-        if dev_mode_enabled:
-            dev_debug_cycle = json.loads(get_setting(conn, "dev_debug_cycle_json", "[]"))
 
         return {
             "event_title": get_setting(conn, "event_title", "Julklappsspelet"),
             "budget_info": get_setting(conn, "budget_info", "Secret Santa för familjen"),
             "draw_generated": get_setting(conn, "draw_generated", "0") == "1",
             "is_live": is_live,
-            "dev_mode_enabled": dev_mode_enabled,
             "participants": [
                 {
                     "id": r["id"],
@@ -487,7 +472,6 @@ def get_state():
             "aliases_pool": json.loads(get_setting(conn, "alias_pool_json", "[]")),
             "alias_cycle": json.loads(get_setting(conn, "alias_cycle_json", "[]")),
             "alias_board": alias_board,
-            "dev_debug_cycle": dev_debug_cycle,
         }
     finally:
         conn.close()
