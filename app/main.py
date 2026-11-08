@@ -391,7 +391,10 @@ def _build_user_session_response(conn, user, password_clean: str) -> Dict[str, A
 @app.get("/")
 @app.get("/admin")
 def serve_index():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    return FileResponse(
+        str(STATIC_DIR / "index.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 @app.get("/api/invite/{invite_token}")
