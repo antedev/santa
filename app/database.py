@@ -70,7 +70,8 @@ def init_db(db_path: Optional[Path] = None, seed_path: Optional[Path] = None) ->
             CREATE TABLE IF NOT EXISTS alias_board (
                 alias_name TEXT PRIMARY KEY,
                 has_drawn INTEGER NOT NULL DEFAULT 0,
-                is_kid_bonus INTEGER NOT NULL DEFAULT 0
+                is_kid_bonus INTEGER NOT NULL DEFAULT 0,
+                target_alias TEXT NOT NULL DEFAULT ''
             );
             """
         )
@@ -90,6 +91,8 @@ def init_db(db_path: Optional[Path] = None, seed_path: Optional[Path] = None) ->
         alias_cols = [r["name"] for r in conn.execute("PRAGMA table_info(alias_board)").fetchall()]
         if "is_kid_bonus" not in alias_cols:
             conn.execute("ALTER TABLE alias_board ADD COLUMN is_kid_bonus INTEGER NOT NULL DEFAULT 0")
+        if "target_alias" not in alias_cols:
+            conn.execute("ALTER TABLE alias_board ADD COLUMN target_alias TEXT NOT NULL DEFAULT ''")
 
         # Always purge any legacy plaintext debug cycle from settings
         conn.execute("DELETE FROM settings WHERE key = 'dev_debug_cycle_json'")

@@ -405,6 +405,30 @@ function renderChainVerification() {
   firstNode.textContent = `🎭 ${appState.alias_cycle[0]}`;
   chainBox.appendChild(firstNode);
 
+  // Also render any kid bonus arrows (kid_alias -> target_alias) once drawn
+  const kidBonuses = appState.alias_board.filter(
+    (item) => item.is_kid_bonus && item.has_drawn && item.target_alias
+  );
+  if (kidBonuses.length > 0) {
+    kidBonuses.forEach((kb) => {
+      const row = document.createElement("div");
+      row.style.width = "100%";
+      row.style.display = "flex";
+      row.style.justifyContent = "center";
+      row.style.alignItems = "center";
+      row.style.gap = "0.45rem";
+      row.style.marginTop = "0.65rem";
+      row.style.paddingTop = "0.65rem";
+      row.style.borderTop = "1px dashed rgba(240, 194, 101, 0.25)";
+      row.innerHTML = `
+        <span class="chain-node">🎭 ${escapeHtml(kb.alias_name)} (Bonuslott)</span>
+        <span class="chain-arrow">➔</span>
+        <span class="chain-node loop-back">🎭 ${escapeHtml(kb.target_alias)}</span>
+      `;
+      chainBox.appendChild(row);
+    });
+  }
+
   appState.alias_board.forEach((item) => {
     const card = document.createElement("div");
     card.className = `alias-card ${item.has_drawn ? "drawn" : ""}`;

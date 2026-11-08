@@ -455,13 +455,14 @@ def get_state():
         ]
 
         alias_board_rows = conn.execute(
-            "SELECT alias_name, has_drawn, is_kid_bonus FROM alias_board ORDER BY is_kid_bonus ASC, alias_name COLLATE NOCASE ASC"
+            "SELECT alias_name, has_drawn, is_kid_bonus, target_alias FROM alias_board ORDER BY is_kid_bonus ASC, alias_name COLLATE NOCASE ASC"
         ).fetchall()
         alias_board = [
             {
                 "alias_name": r["alias_name"],
                 "has_drawn": bool(r["has_drawn"]),
                 "is_kid_bonus": bool(r["is_kid_bonus"]),
+                "target_alias": r["target_alias"] or "",
             }
             for r in alias_board_rows
         ]
@@ -500,7 +501,17 @@ def login_user(req: LoginRequest):
             user, password_clean = _authenticate_user(
                 conn, req.user_id, req.password, req.invite_token, req.reset_pin
             )
-            return _build_user_session_response(conn, user, password_clean)
+            session_data = _build_user_session_response(conn, user, password_clean)
+            if user["is_kid"] and user["has_drawn_lot"] and session_data["assignment"]:
+                conn.execute(
+                    "INSERT INTO alias_board (alias_name, has_drawn, is_kid_bonus, target_alias) VALUES (?, 1, 1, ?) "
+                    "ON CONFLICT(alias_name) DO UPDATE SET has_drawn = 1, target_alias = excluded.target_alias",
+                    (
+                        session_data["assignment"]["my_alias"],
+                        session_data["assignment"]["target_alias"],
+                    ),
+                )
+            return session_data
     finally:
         conn.close()
 
@@ -523,13 +534,14 @@ def user_draw_lot(req: LoginRequest):
                 raise HTTPException(status_code=400, detail="Ingen lott hittades för denna deltagare.")
 
             my_alias = session_data["assignment"]["my_alias"]
+            target_alias = session_data["assignment"]["target_alias"]
             conn.execute("UPDATE users SET has_drawn_lot = 1 WHERE id = ?", (user["id"],))
             if user["is_kid"]:
-                # Add kid's bonus alias to alias_board once they actually choose to draw!
+                # Add kid's bonus arrow (my_alias -> target_alias) to alias_board once they choose to draw!
                 conn.execute(
-                    "INSERT INTO alias_board (alias_name, has_drawn, is_kid_bonus) VALUES (?, 1, 1) "
-                    "ON CONFLICT(alias_name) DO UPDATE SET has_drawn = 1",
-                    (my_alias,),
+                    "INSERT INTO alias_board (alias_name, has_drawn, is_kid_bonus, target_alias) VALUES (?, 1, 1, ?) "
+                    "ON CONFLICT(alias_name) DO UPDATE SET has_drawn = 1, target_alias = excluded.target_alias",
+                    (my_alias, target_alias),
                 )
             else:
                 conn.execute(
