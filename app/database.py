@@ -56,7 +56,8 @@ def init_db(db_path: Optional[Path] = None, seed_path: Optional[Path] = None) ->
                 encrypted_assignment TEXT DEFAULT NULL,
                 token_encrypted_assignment TEXT DEFAULT NULL,
                 is_password_encrypted INTEGER NOT NULL DEFAULT 0,
-                has_drawn_lot INTEGER NOT NULL DEFAULT 0
+                has_drawn_lot INTEGER NOT NULL DEFAULT 0,
+                has_secret_santa INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS exclusions (
@@ -87,6 +88,8 @@ def init_db(db_path: Optional[Path] = None, seed_path: Optional[Path] = None) ->
                 )
         if "token_encrypted_assignment" not in user_cols:
             conn.execute("ALTER TABLE users ADD COLUMN token_encrypted_assignment TEXT")
+        if "has_secret_santa" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN has_secret_santa INTEGER NOT NULL DEFAULT 0")
 
         alias_cols = [r["name"] for r in conn.execute("PRAGMA table_info(alias_board)").fetchall()]
         if "is_kid_bonus" not in alias_cols:

@@ -163,10 +163,18 @@
       <!-- TAB 3: TÄCKNAMN & STATUS (PUBLIC ALIAS STATUS WITHOUT LEAKING NEIGHBORS) -->
       <section id="tab-chain" class="tab-panel">
         <div class="card">
-          <h2>🎭 Täcknamn &amp; Status</h2>
+          <h2>🎁 Har alla fått en Secret Santa?</h2>
+          <p class="muted" id="santaReceivedSummary">
+            Här bockas namnen i allteftersom personernas hemliga tomtar drar sina lotter, så att vi ser att alla får en julklapp!
+          </p>
+          <div id="recipientChecklistGrid" class="alias-status-grid"></div>
+        </div>
+
+        <div class="card">
+          <h2>🎭 Täcknamn som dragit sin lott</h2>
           <p class="muted">
             Alla 6 vuxna är ihopkopplade i en enda sluten cirkel (ingen ger tillbaka till samma person som man får av).
-            Här visas alla täcknamn i bokstavsordning så att du kan se hur många som har dragit sin lott utan att någon kan räkna ut vem som har vilket täcknamn!
+            Här visas alla täcknamn i bokstavsordning.
           </p>
           <div id="aliasStatusGrid" class="alias-status-grid"></div>
         </div>
@@ -265,6 +273,6 @@
     <span>🎄 Julklappsspelet</span>
   </footer>
 
-  <script src="/static/app.js?v=20261108-5"></script>
+  <script src="/static/app.js?v=20261108-6"></script>
 </body>
 </html>

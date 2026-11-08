@@ -151,6 +151,12 @@ def test_full_workflow_invite_links_and_kids_bonus_lottery(tmp_path: Path, monke
         )
         assert alias_entry["has_drawn"] is True
 
+        # Verify target now has has_secret_santa == True
+        target_participant = next(
+            p for p in state_after["participants"] if p["name"] == login_data["assignment"]["target_name"]
+        )
+        assert target_participant["has_secret_santa"] is True
+
         # 7. Kid (Elise) logs in via personal link and draws an optional bonus lot -> always gets Elsy!
         elise = next(k for k in kids if k["name"] == "Elise")
         elise_token = invites[elise["id"]]

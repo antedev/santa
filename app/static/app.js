@@ -377,6 +377,32 @@ function renderKidsWishlists() {
 // --- Tab 3: Täcknamn & Status ---
 
 function renderChainVerification() {
+  const checklistGrid = document.getElementById("recipientChecklistGrid");
+  const summaryEl = document.getElementById("santaReceivedSummary");
+  if (checklistGrid) {
+    checklistGrid.innerHTML = "";
+    const adults = appState.participants.filter((p) => !p.is_kid);
+    const coveredCount = adults.filter((p) => p.has_secret_santa).length;
+    if (summaryEl) {
+      summaryEl.textContent =
+        coveredCount === adults.length && adults.length > 0
+          ? `✅ Alla ${adults.length} av ${adults.length} har fått en Secret Santa – alla får en julklapp!`
+          : `${coveredCount} av ${adults.length} har fått sin Secret Santa utsedd hittills.`;
+    }
+    adults.forEach((p) => {
+      const card = document.createElement("div");
+      card.className = `alias-card ${p.has_secret_santa ? "drawn" : ""}`;
+      card.innerHTML = `
+        <label style="display:flex; align-items:center; gap:0.55rem; margin:0; cursor:default;">
+          <input type="checkbox" disabled ${p.has_secret_santa ? "checked" : ""} style="width:1.1rem; height:1.1rem; accent-color:var(--success);" />
+          <strong>${escapeHtml(p.name)}</strong>
+        </label>
+        <span class="tag">${p.has_secret_santa ? "🎁 Har en tomte" : "⏳ Väntar"}</span>
+      `;
+      checklistGrid.appendChild(card);
+    });
+  }
+
   const statusGrid = document.getElementById("aliasStatusGrid");
   if (!statusGrid) return;
   statusGrid.innerHTML = "";

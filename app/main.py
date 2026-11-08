@@ -171,7 +171,7 @@ def _perform_draw_generation(
     # Reset passwords and draw status so pre-claim encryption is consistent
     for uid in all_ids:
         conn.execute(
-            "UPDATE users SET password_hash = NULL, password_salt = ?, is_password_encrypted = 0, has_drawn_lot = 0 WHERE id = ?",
+            "UPDATE users SET password_hash = NULL, password_salt = ?, is_password_encrypted = 0, has_drawn_lot = 0, has_secret_santa = 0 WHERE id = ?",
             (generate_salt(), uid),
         )
 
@@ -435,7 +435,7 @@ def get_state():
     conn = get_connection()
     try:
         users_rows = conn.execute(
-            "SELECT id, name, is_kid, wishlist, password_hash IS NOT NULL AS has_account, has_drawn_lot "
+            "SELECT id, name, is_kid, wishlist, password_hash IS NOT NULL AS has_account, has_drawn_lot, has_secret_santa "
             "FROM users ORDER BY is_kid ASC, name COLLATE NOCASE ASC"
         ).fetchall()
 
@@ -481,6 +481,7 @@ def get_state():
                     "is_kid": bool(r["is_kid"]),
                     "wishlist": r["wishlist"],
                     "has_account": bool(r["has_account"]),
+                    "has_secret_santa": bool(r["has_secret_santa"]),
                 }
                 for r in users_rows
             ],
@@ -501,6 +502,11 @@ def login_user(req: LoginRequest):
                 conn, req.user_id, req.password, req.invite_token, req.reset_pin
             )
             session_data = _build_user_session_response(conn, user, password_clean)
+            if user["has_drawn_lot"] and session_data["assignment"]:
+                conn.execute(
+                    "UPDATE users SET has_secret_santa = 1 WHERE id = ?",
+                    (session_data["assignment"]["target_id"],),
+                )
             if user["is_kid"] and user["has_drawn_lot"] and session_data["assignment"]:
                 conn.execute(
                     "INSERT INTO alias_board (alias_name, has_drawn, is_kid_bonus, target_alias) VALUES (?, 1, 1, ?) "
@@ -534,7 +540,9 @@ def user_draw_lot(req: LoginRequest):
 
             my_alias = session_data["assignment"]["my_alias"]
             target_alias = session_data["assignment"]["target_alias"]
+            target_id = session_data["assignment"]["target_id"]
             conn.execute("UPDATE users SET has_drawn_lot = 1 WHERE id = ?", (user["id"],))
+            conn.execute("UPDATE users SET has_secret_santa = 1 WHERE id = ?", (target_id,))
             if user["is_kid"]:
                 # Add kid's bonus arrow (my_alias -> target_alias) to alias_board once they choose to draw!
                 conn.execute(
