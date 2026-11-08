@@ -69,14 +69,18 @@ def test_full_workflow_and_admin_blindness(tmp_path: Path, monkeypatch):
     importlib.reload(app.main)
 
     with TestClient(app.main.app) as client:
-        # 1. Check initial seeded state
+        # 1. Check initial seeded state (draw is auto-generated on startup!)
         state = client.get("/api/state").json()
         assert state["is_live"] is False
-        assert state["draw_generated"] is False
+        assert state["draw_generated"] is True
         adults = [p for p in state["participants"] if not p["is_kid"]]
         kids = [p for p in state["participants"] if p["is_kid"]]
         assert len(adults) == 6
-        assert len(kids) == 2
+        assert len(kids) == 3
+        adult_names = {a["name"] for a in adults}
+        assert adult_names == {"Andreas", "Lotta", "Caroline", "Simon", "Mikael", "Elsy"}
+        kid_names = {k["name"] for k in kids}
+        assert kid_names == {"Louise", "Josefin", "Elise"}
 
         # 2. Pre-generate draw in advance with a seed
         gen_res = client.post(

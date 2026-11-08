@@ -34,6 +34,16 @@ from app.matcher import MatchingError, assign_aliases, find_single_cycle
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    conn = get_connection()
+    try:
+        with conn:
+            if get_setting(conn, "draw_generated", "0") == "0":
+                try:
+                    _perform_draw_generation(conn)
+                except MatchingError:
+                    pass
+    finally:
+        conn.close()
     yield
 
 
@@ -705,6 +715,10 @@ def admin_reset_from_seed(req: AdminAuthMixin):
     try:
         with conn:
             load_seed_into_db(conn, SEED_PATH)
+            try:
+                _perform_draw_generation(conn)
+            except MatchingError:
+                pass
             return {"ok": True}
     finally:
         conn.close()

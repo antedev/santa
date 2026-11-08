@@ -1,8 +1,9 @@
-// Julklappsspelet – Secret Santa Frontend Logic
+// Julklappsspelet – Clean Frontend Logic
 
 let appState = null;
 let selectedLoginUserId = null;
 let currentSession = null; // { user, assignment, password }
+let adminViewOpen = false;
 
 // --- Utilities ---
 
@@ -14,7 +15,7 @@ function showToast(msg, isError = false) {
   clearTimeout(window._toastTimer);
   window._toastTimer = setTimeout(() => {
     el.classList.add("hidden");
-  }, 4000);
+  }, 3800);
 }
 
 async function apiRequest(url, method = "GET", body = null) {
@@ -48,12 +49,12 @@ function escapeHtml(str) {
 function initSnowflakes() {
   const container = document.getElementById("snowContainer");
   const glyphs = ["❄", "❅", "❆", "✦"];
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 20; i++) {
     const span = document.createElement("span");
     span.className = "snowflake";
     span.textContent = glyphs[i % glyphs.length];
     span.style.left = `${Math.random() * 100}%`;
-    span.style.fontSize = `${0.7 + Math.random() * 0.9}rem`;
+    span.style.fontSize = `${0.7 + Math.random() * 0.85}rem`;
     span.style.animationDuration = `${9 + Math.random() * 12}s`;
     span.style.animationDelay = `${Math.random() * 8}s`;
     container.appendChild(span);
@@ -62,16 +63,23 @@ function initSnowflakes() {
 
 // --- Tabs ---
 
-function initTabs() {
+function switchTab(tabId) {
   const buttons = document.querySelectorAll(".tab-btn");
   const panels = document.querySelectorAll(".tab-panel");
+  buttons.forEach((b) => b.classList.toggle("active", b.dataset.tab === tabId));
+  panels.forEach((p) => p.classList.toggle("active", p.id === tabId));
+}
+
+function initTabs() {
+  const buttons = document.querySelectorAll(".tab-btn");
   buttons.forEach((btn) => {
     btn.addEventListener("click", () => {
-      buttons.forEach((b) => b.classList.remove("active"));
-      panels.forEach((p) => p.classList.remove("active"));
-      btn.classList.add("active");
-      const target = document.getElementById(btn.dataset.tab);
-      if (target) target.classList.add("active");
+      if (!currentSession && btn.dataset.tab !== "tab-admin") {
+        adminViewOpen = false;
+        renderLayoutVisibility();
+        return;
+      }
+      switchTab(btn.dataset.tab);
     });
   });
 }
@@ -81,8 +89,11 @@ function initTabs() {
 async function loadState() {
   try {
     appState = await apiRequest("/api/state");
-    renderHeader();
-    renderLoginSection();
+    document.getElementById("eventTitle").textContent = `🎄 ${appState.event_title}`;
+    document.getElementById("budgetInfo").textContent = appState.budget_info;
+
+    renderLayoutVisibility();
+    renderLoginScreen();
     renderUserDashboard();
     renderKidsCorner();
     renderChainVerification();
@@ -92,83 +103,87 @@ async function loadState() {
   }
 }
 
-function renderHeader() {
-  document.getElementById("eventTitle").textContent = appState.event_title;
-  document.getElementById("budgetInfo").textContent = appState.budget_info;
+function renderLayoutVisibility() {
+  const loginScreen = document.getElementById("loginScreen");
+  const mainNav = document.getElementById("mainNav");
+  const appContent = document.getElementById("appContent");
+  const userBar = document.getElementById("userBar");
+  const adminTabBtn = document.getElementById("adminTabBtn");
 
-  const liveBadge = document.getElementById("liveBadge");
-  if (appState.is_live) {
-    liveBadge.textContent = "🟢 Live – Lottningen är låst & aktiv";
-    liveBadge.className = "badge badge-live";
-  } else if (appState.draw_generated) {
-    liveBadge.textContent = "🟡 Förgenererad – Redo att gå live";
-    liveBadge.className = "badge badge-setup";
+  if (!currentSession && !adminViewOpen) {
+    // Only show clean login screen!
+    loginScreen.classList.remove("hidden");
+    mainNav.classList.add("hidden");
+    appContent.classList.add("hidden");
+  } else if (!currentSession && adminViewOpen) {
+    // Discreet admin mode opened from footer while logged out
+    loginScreen.classList.add("hidden");
+    mainNav.classList.remove("hidden");
+    appContent.classList.remove("hidden");
+    userBar.classList.add("hidden");
+    adminTabBtn.classList.remove("hidden");
+    switchTab("tab-admin");
   } else {
-    liveBadge.textContent = "⚙️ Förberedelseläge (Ingen kedja genererad än)";
-    liveBadge.className = "badge badge-setup";
+    // Logged in user
+    loginScreen.classList.add("hidden");
+    mainNav.classList.remove("hidden");
+    appContent.classList.remove("hidden");
+    userBar.classList.remove("hidden");
+    adminTabBtn.classList.toggle("hidden", !adminViewOpen);
   }
-
-  const devBadge = document.getElementById("devBadge");
-  devBadge.classList.toggle("hidden", !appState.dev_mode_enabled);
 }
 
-// --- Tab 1: Login & Participant Dashboard ---
+// --- Login Screen (Simple Name Picker) ---
 
-function renderLoginSection() {
-  const loginCard = document.getElementById("loginCard");
-  const dashboard = document.getElementById("userDashboard");
-
-  if (currentSession) {
-    loginCard.classList.add("hidden");
-    dashboard.classList.remove("hidden");
-    return;
-  }
-
-  loginCard.classList.remove("hidden");
-  dashboard.classList.add("hidden");
-
-  const grid = document.getElementById("loginUserGrid");
-  grid.innerHTML = "";
-
-  appState.participants.forEach((p) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = `user-tile ${selectedLoginUserId === p.id ? "selected" : ""}`;
-    const roleLabel = p.is_kid ? "👶 Barnhörnan" : "🎅 Vuxenlottning";
-    const accountLabel = p.has_account ? "🔒 Har valt PIN/lösenord" : "✨ Ny: Välj PIN vid inloggning";
-    btn.innerHTML = `
-      <span class="user-tile-name">${escapeHtml(p.name)}</span>
-      <span class="user-tile-meta">${roleLabel}</span>
-      <span class="user-tile-meta">${accountLabel}</span>
-    `;
-    btn.addEventListener("click", () => {
-      selectedLoginUserId = p.id;
-      renderLoginSection();
-      const loginForm = document.getElementById("loginForm");
-      loginForm.classList.remove("hidden");
-      document.getElementById("selectedUserName").textContent = p.name;
-      document.getElementById("selectedUserStatus").textContent = p.has_account
-        ? "Ange ditt valda lösenord/PIN"
-        : "Första inloggningen – välj ett nytt lösenord/PIN!";
-      document.getElementById("passwordPromptLabel").textContent = p.has_account
-        ? `Ange lösenord/PIN för ${p.name}:`
-        : `Välj ett nytt lösenord/PIN för ${p.name} (krypterar din lott):`;
-      document.getElementById("loginPassword").focus();
-    });
-    grid.appendChild(btn);
+function createNameTile(p) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = `user-tile ${selectedLoginUserId === p.id ? "selected" : ""}`;
+  btn.textContent = p.name;
+  btn.addEventListener("click", () => {
+    selectedLoginUserId = p.id;
+    renderLoginScreen();
+    const loginForm = document.getElementById("loginForm");
+    loginForm.classList.remove("hidden");
+    document.getElementById("passwordPromptLabel").textContent = p.has_account
+      ? `Ange din PIN-kod / lösenord, ${p.name}:`
+      : `Välj en egen PIN-kod / lösenord, ${p.name} (första inloggningen):`;
+    document.getElementById("loginPassword").focus();
   });
+  return btn;
 }
+
+function renderLoginScreen() {
+  const adultsGrid = document.getElementById("loginUserGrid");
+  const kidsGrid = document.getElementById("loginKidsGrid");
+  const kidsDivider = document.getElementById("kidsLoginDivider");
+
+  adultsGrid.innerHTML = "";
+  kidsGrid.innerHTML = "";
+
+  const adults = appState.participants.filter((p) => !p.is_kid);
+  const kids = appState.participants.filter((p) => p.is_kid);
+
+  adults.forEach((p) => adultsGrid.appendChild(createNameTile(p)));
+
+  if (kids.length > 0) {
+    kidsDivider.classList.remove("hidden");
+    kidsGrid.classList.remove("hidden");
+    kids.forEach((p) => kidsGrid.appendChild(createNameTile(p)));
+  } else {
+    kidsDivider.classList.add("hidden");
+    kidsGrid.classList.add("hidden");
+  }
+}
+
+// --- Logged-In User Dashboard ---
 
 function renderUserDashboard() {
   if (!currentSession) return;
 
   const { user, assignment } = currentSession;
   document.getElementById("loggedInName").textContent = user.name;
-  document.getElementById("loggedInRoleBadge").textContent = user.is_kid
-    ? "👶 Barnens Hörna"
-    : "🎅 Huvudlottningen";
 
-  // Sync wishlist textarea if not focused
   const wlInput = document.getElementById("myWishlistInput");
   if (document.activeElement !== wlInput) {
     wlInput.value = user.wishlist || "";
@@ -202,7 +217,7 @@ function renderUserDashboard() {
   if (!user.has_drawn_lot) {
     lotteryMachineBox.classList.remove("hidden");
     matchRevealedBox.classList.add("hidden");
-    document.getElementById("slotText").textContent = "🎁 Tryck för att dra din lott! 🎁";
+    document.getElementById("slotText").textContent = "🎁 Redo att dra lott 🎁";
   } else {
     lotteryMachineBox.classList.add("hidden");
     matchRevealedBox.classList.remove("hidden");
@@ -215,7 +230,6 @@ function populateMatchReveal(assignment) {
   document.getElementById("targetPersonName").textContent = assignment.target_name;
   document.getElementById("targetWishlistOwner").textContent = assignment.target_name;
 
-  // Always grab latest wishlist from appState if available
   const latestTarget = appState.participants.find((p) => p.id === assignment.target_id);
   const wishlistText = latestTarget ? latestTarget.wishlist : assignment.target_wishlist;
   document.getElementById("targetWishlistText").textContent =
@@ -237,69 +251,64 @@ async function runLotteryWheelAnimation(finalName) {
     .map((p) => p.name);
 
   const pool = adultNames.length > 0 ? adultNames : [finalName];
-  const totalSteps = 24;
+  const totalSteps = 22;
   for (let i = 0; i < totalSteps; i++) {
     const candidate = pool[i % pool.length];
     slotText.textContent = `🎰 ${candidate}...`;
-    // Gradually slow down the wheel
-    const delay = 65 + Math.floor((i / totalSteps) ** 2 * 190);
+    const delay = 60 + Math.floor((i / totalSteps) ** 2 * 180);
     await new Promise((r) => setTimeout(r, delay));
   }
 
   slotWindow.classList.remove("spinning");
   slotText.textContent = `🎉 ${finalName}! 🎉`;
-  await new Promise((r) => setTimeout(r, 750));
+  await new Promise((r) => setTimeout(r, 700));
   spinBtn.disabled = false;
 }
 
-// --- Tab 2: Barnens Hörna (Kids Bonus Pool) ---
+// --- Tab 2: Barnen (Louise, Josefin & Elise) ---
 
 function renderKidsCorner() {
   const container = document.getElementById("kidsListContainer");
   container.innerHTML = "";
 
   const kids = appState.participants.filter((p) => p.is_kid);
-  if (kids.length === 0) {
-    container.innerHTML = `<p class="muted">Inga barn är inlagda ännu. Du kan lägga till barn under fliken <strong>Förbered &amp; Seed</strong>.</p>`;
-  } else {
-    kids.forEach((kid) => {
-      const pledges = appState.kid_gifts.filter((g) => g.recipient_user_id === kid.id);
-      const card = document.createElement("div");
-      card.className = "kid-card";
+  kids.forEach((kid) => {
+    const pledges = appState.kid_gifts.filter((g) => g.recipient_user_id === kid.id);
+    const card = document.createElement("div");
+    card.className = "kid-card";
 
-      let pledgesHtml = "";
-      if (pledges.length === 0) {
-        pledgesHtml = `<p class="muted" style="margin-top:0.65rem;">Ingen har paxat att ge en extra klapp till ${escapeHtml(kid.name)} ännu.</p>`;
-      } else {
-        const items = pledges
-          .map((g) => {
-            const canDelete =
-              currentSession && currentSession.user.owner_tag === g.owner_tag;
-            const notePart = g.gift_note ? ` – <em>"${escapeHtml(g.gift_note)}"</em>` : "";
-            const delBtn = canDelete
-              ? `<button type="button" class="btn btn-danger" onclick="deleteKidGift(${g.id})">Ta bort</button>`
-              : "";
-            return `<li class="kid-pledge-item">
-              <span>🎁 Från <strong>${escapeHtml(g.giver_label)}</strong>${notePart}</span>
-              ${delBtn}
-            </li>`;
-          })
-          .join("");
-        pledgesHtml = `<ul class="kid-pledge-list">${items}</ul>`;
-      }
+    let pledgesHtml = "";
+    if (pledges.length === 0) {
+      pledgesHtml = `<p class="muted" style="margin-top:0.55rem;">Ingen paxad klapp ännu.</p>`;
+    } else {
+      const items = pledges
+        .map((g) => {
+          const canDelete =
+            currentSession && currentSession.user.owner_tag === g.owner_tag;
+          const notePart = g.gift_note ? ` – <em>"${escapeHtml(g.gift_note)}"</em>` : "";
+          const delBtn = canDelete
+            ? `<button type="button" class="btn btn-danger" onclick="deleteKidGift(${g.id})">Ta bort</button>`
+            : "";
+          return `<li class="kid-pledge-item">
+            <span>🎁 Från <strong>${escapeHtml(g.giver_label)}</strong>${notePart}</span>
+            ${delBtn}
+          </li>`;
+        })
+        .join("");
+      pledgesHtml = `<ul class="kid-pledge-list">${items}</ul>`;
+    }
 
-      card.innerHTML = `
-        <h3>👶 ${escapeHtml(kid.name)}</h3>
-        <p class="muted" style="margin:0.2rem 0;"><strong>Önskelista:</strong> ${
-          kid.wishlist ? escapeHtml(kid.wishlist) : "Ingen önskelista inlagd än."
-        }</p>
-        ${pledgesHtml}
-      `;
-      container.appendChild(card);
-    });
-  }
+    card.innerHTML = `
+      <h3>👶 ${escapeHtml(kid.name)}</h3>
+      <p class="muted" style="margin:0.2rem 0;"><strong>Önskelista:</strong> ${
+        kid.wishlist ? escapeHtml(kid.wishlist) : "Ingen önskelista inlagd än."
+      }</p>
+      ${pledgesHtml}
+    `;
+    container.appendChild(card);
+  });
 
-  // Also show any extra gifts where a kid signed up to give to an adult!
+  // Extra gifts to adults (e.g. if a kid signed up to give a gift to an adult)
   const adultExtraGifts = appState.kid_gifts.filter((g) => {
     const rec = appState.participants.find((p) => p.id === g.recipient_user_id);
     return rec && !rec.is_kid;
@@ -323,27 +332,16 @@ function renderKidsCorner() {
       })
       .join("");
     extraCard.innerHTML = `
-      <h3>🌟 Extra julklappar utanför vuxenlottningen</h3>
+      <h3>🌟 Extra klappar</h3>
       <ul class="kid-pledge-list">${items}</ul>
     `;
     container.appendChild(extraCard);
   }
 
-  // Kid gift form visibility
-  const hint = document.getElementById("kidGiftLoginHint");
-  const form = document.getElementById("kidGiftForm");
-  if (!currentSession) {
-    hint.classList.remove("hidden");
-    form.classList.add("hidden");
-  } else {
-    hint.classList.add("hidden");
-    form.classList.remove("hidden");
-
+  if (currentSession) {
     const select = document.getElementById("kidGiftRecipient");
     const prevVal = select.value;
     select.innerHTML = "";
-
-    // Kids first, then adults (so kids can also give to adults if they want!)
     const sorted = [...appState.participants].sort((a, b) => Number(b.is_kid) - Number(a.is_kid));
     sorted.forEach((p) => {
       if (p.id === currentSession.user.id) return;
@@ -371,7 +369,7 @@ window.deleteKidGift = async function (giftId) {
   }
 };
 
-// --- Tab 3: Chain & Public Alias Verification ---
+// --- Tab 3: Kedjan ---
 
 function renderChainVerification() {
   const chainBox = document.getElementById("chainVisualization");
@@ -381,8 +379,7 @@ function renderChainVerification() {
   statusGrid.innerHTML = "";
 
   if (!appState.draw_generated || appState.alias_cycle.length === 0) {
-    chainBox.innerHTML = `<span class="muted">Ingen lottningskedja är genererad ännu.</span>`;
-    statusGrid.innerHTML = `<span class="muted">Inga täcknamn är tilldelade ännu.</span>`;
+    chainBox.innerHTML = `<span class="muted">Ingen kedja genererad än.</span>`;
     return;
   }
 
@@ -398,10 +395,9 @@ function renderChainVerification() {
     chainBox.appendChild(arrow);
   });
 
-  // Loop back to the first alias to prove it's one closed Hamiltonian cycle
   const firstNode = document.createElement("span");
   firstNode.className = "chain-node loop-back";
-  firstNode.textContent = `🎭 ${appState.alias_cycle[0]} (Sluter cirkeln!)`;
+  firstNode.textContent = `🎭 ${appState.alias_cycle[0]}`;
   chainBox.appendChild(firstNode);
 
   appState.alias_board.forEach((item) => {
@@ -409,13 +405,13 @@ function renderChainVerification() {
     card.className = `alias-card ${item.has_drawn ? "drawn" : ""}`;
     card.innerHTML = `
       <strong>🎭 ${escapeHtml(item.alias_name)}</strong>
-      <span class="tag">${item.has_drawn ? "✅ Har dragit lott" : "⏳ Väntar"}</span>
+      <span class="tag">${item.has_drawn ? "✅ Dragit lott" : "⏳ Väntar"}</span>
     `;
     statusGrid.appendChild(card);
   });
 }
 
-// --- Tab 4: Admin / Pre-Live Setup & Seeding ---
+// --- Tab 4: Admin Panel ---
 
 function renderAdminPanel() {
   const lockedBanner = document.getElementById("liveLockedBanner");
@@ -432,12 +428,6 @@ function renderAdminPanel() {
     goLiveBtn.classList.remove("hidden");
   }
 
-  // Settings fields
-  document.getElementById("adminTitleInput").value = appState.event_title;
-  document.getElementById("adminBudgetInput").value = appState.budget_info;
-  document.getElementById("adminAliasesInput").value = (appState.aliases_pool || []).join(", ");
-
-  // Participants list
   const listEl = document.getElementById("adminParticipantsList");
   listEl.innerHTML = "";
   appState.participants.forEach((p) => {
@@ -452,28 +442,23 @@ function renderAdminPanel() {
       <input type="text" value="${escapeHtml(p.wishlist)}" id="editWish_${p.id}" placeholder="Önskelista..." />
       <div class="button-group">
         <button type="button" class="btn btn-outline btn-sm" onclick="saveParticipant(${p.id})">Spara</button>
-        <button type="button" class="btn btn-danger" onclick="removeParticipant(${p.id})">Ta bort</button>
+        <button type="button" class="btn btn-danger" onclick="removeParticipant(${p.id})">✕</button>
       </div>
     `;
     listEl.appendChild(row);
   });
 
-  // Exclusions dropdowns & chips
   const exclList = document.getElementById("adminExclusionsList");
   exclList.innerHTML = "";
-  if (appState.exclusions.length === 0) {
-    exclList.innerHTML = `<span class="muted">Inga undantag inlagda.</span>`;
-  } else {
-    appState.exclusions.forEach((ex) => {
-      const chip = document.createElement("span");
-      chip.className = "chip";
-      chip.innerHTML = `
-        <span>${escapeHtml(ex.user_a_name)} ↔ ${escapeHtml(ex.user_b_name)}</span>
-        <button type="button" class="btn btn-danger" onclick="removeExclusion(${ex.id})">✕</button>
-      `;
-      exclList.appendChild(chip);
-    });
-  }
+  appState.exclusions.forEach((ex) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = `
+      <span>${escapeHtml(ex.user_a_name)} ↔ ${escapeHtml(ex.user_b_name)}</span>
+      <button type="button" class="btn btn-danger" onclick="removeExclusion(${ex.id})">✕</button>
+    `;
+    exclList.appendChild(chip);
+  });
 
   const adults = appState.participants.filter((p) => !p.is_kid);
   const selA = document.getElementById("exclUserA");
@@ -494,19 +479,16 @@ function renderAdminPanel() {
     selB.appendChild(optB);
   });
 
-  // Dev Mode Inspector
   const devBox = document.getElementById("devInspectorBox");
   const devTableContainer = document.getElementById("devCycleTableContainer");
   if (appState.dev_mode_enabled && appState.dev_debug_cycle && appState.dev_debug_cycle.length > 0) {
     devBox.classList.remove("hidden");
     const rowsHtml = appState.dev_debug_cycle
       .map(
-        (step, i) => `
+        (step) => `
         <tr>
-          <td>#${i + 1}</td>
-          <td><strong>${escapeHtml(step.giver_name)}</strong></td>
-          <td>🎭 ${escapeHtml(step.giver_alias)}</td>
-          <td>➔ ger julklapp till ➔</td>
+          <td><strong>${escapeHtml(step.giver_name)}</strong> (${escapeHtml(step.giver_alias)})</td>
+          <td>➔</td>
           <td><strong>${escapeHtml(step.target_name)}</strong></td>
         </tr>
       `
@@ -514,15 +496,6 @@ function renderAdminPanel() {
       .join("");
     devTableContainer.innerHTML = `
       <table class="dev-table">
-        <thead>
-          <tr>
-            <th>Steg</th>
-            <th>Givare (Riktigt namn)</th>
-            <th>Givarens Täcknamn</th>
-            <th></th>
-            <th>Mottagare (Riktigt namn)</th>
-          </tr>
-        </thead>
         <tbody>${rowsHtml}</tbody>
       </table>
     `;
@@ -543,7 +516,7 @@ window.saveParticipant = async function (userId) {
       is_kid,
       wishlist,
     });
-    showToast("Deltagaren uppdaterades!");
+    showToast("Deltagaren sparades!");
     await loadState();
   } catch (err) {
     showToast(err.message, true);
@@ -582,10 +555,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Login Form
   document.getElementById("loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!selectedLoginUserId) {
-      showToast("Välj ditt namn först!", true);
-      return;
-    }
+    if (!selectedLoginUserId) return;
     const password = document.getElementById("loginPassword").value;
     try {
       const res = await apiRequest("/api/auth/login", "POST", {
@@ -597,9 +567,10 @@ document.addEventListener("DOMContentLoaded", () => {
         assignment: res.assignment,
         password,
       };
+      adminViewOpen = false;
       document.getElementById("loginPassword").value = "";
+      switchTab("tab-my-santa");
       await loadState();
-      showToast(`Välkommen in i stugan, ${res.user.name}! 🎄`);
     } catch (err) {
       showToast(err.message, true);
     }
@@ -609,11 +580,23 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("logoutBtn").addEventListener("click", () => {
     currentSession = null;
     selectedLoginUserId = null;
+    adminViewOpen = false;
     document.getElementById("loginForm").classList.add("hidden");
     loadState();
   });
 
-  // Spin the Lottery Wheel (Illusion of the lottery!)
+  // Discreet Admin Button in Footer
+  document.getElementById("openAdminFooterBtn").addEventListener("click", () => {
+    adminViewOpen = !adminViewOpen;
+    renderLayoutVisibility();
+    if (adminViewOpen) {
+      switchTab("tab-admin");
+    } else if (currentSession) {
+      switchTab("tab-my-santa");
+    }
+  });
+
+  // Spin Lottery Wheel
   document.getElementById("spinLotteryBtn").addEventListener("click", async () => {
     if (!currentSession) return;
     try {
@@ -625,7 +608,6 @@ document.addEventListener("DOMContentLoaded", () => {
       currentSession.user = res.user;
       currentSession.assignment = res.assignment;
       await loadState();
-      showToast(`Du drog ${res.assignment.target_name}! 🎁`);
     } catch (err) {
       showToast(err.message, true);
     }
@@ -654,7 +636,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       currentSession.user.wishlist = res.wishlist;
       await loadState();
-      showToast("Din önskelista är sparad! ✨");
+      showToast("Önskelistan är sparad! ✨");
     } catch (err) {
       showToast(err.message, true);
     }
@@ -677,31 +659,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       document.getElementById("kidGiftNote").value = "";
       await loadState();
-      showToast("Din julklapps-paxning har lagts till! 🎁");
-    } catch (err) {
-      showToast(err.message, true);
-    }
-  });
-
-  // Admin Settings Form
-  document.getElementById("adminSettingsForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const event_title = document.getElementById("adminTitleInput").value;
-    const budget_info = document.getElementById("adminBudgetInput").value;
-    const rawAliases = document.getElementById("adminAliasesInput").value;
-    const aliases = rawAliases
-      .split(/[\n,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    try {
-      await apiRequest("/api/admin/settings", "POST", {
-        admin_password: getAdminPassword(),
-        event_title,
-        budget_info,
-        aliases,
-      });
-      await loadState();
-      showToast("Inställningar och täcknamn sparades!");
+      showToast("Sparat! 🎁");
     } catch (err) {
       showToast(err.message, true);
     }
@@ -741,45 +699,23 @@ document.addEventListener("DOMContentLoaded", () => {
         user_b_id,
       });
       await loadState();
-      showToast("Undantagsregeln lades till!");
+      showToast("Undantaget lades till!");
     } catch (err) {
       showToast(err.message, true);
     }
   });
 
-  // Admin Pre-generate Draw
+  // Admin Generate Draw
   document.getElementById("generateDrawBtn").addEventListener("click", async () => {
     const seed = document.getElementById("drawSeedInput").value.trim() || null;
-    const customOrderRaw = document.getElementById("customOrderInput").value.trim();
-    let custom_cycle_user_ids = null;
-
-    if (customOrderRaw) {
-      const names = customOrderRaw
-        .split(",")
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-      const adults = appState.participants.filter((p) => !p.is_kid);
-      const mappedIds = [];
-      for (const n of names) {
-        const found = adults.find((a) => a.name.toLowerCase() === n);
-        if (!found) {
-          showToast(`Hittade ingen vuxen deltagare med namnet "${n}".`, true);
-          return;
-        }
-        mappedIds.push(found.id);
-      }
-      custom_cycle_user_ids = mappedIds;
-    }
-
     try {
-      const res = await apiRequest("/api/admin/generate-draw", "POST", {
+      await apiRequest("/api/admin/generate-draw", "POST", {
         admin_password: getAdminPassword(),
         seed,
-        custom_cycle_user_ids,
       });
       currentSession = null;
       await loadState();
-      showToast(`Lottningskedja med ${res.adult_count} vuxna har förgenererats! 🎲`);
+      showToast("Ny lottningskedja genererad! 🎲");
     } catch (err) {
       showToast(err.message, true);
     }
@@ -791,7 +727,7 @@ document.addEventListener("DOMContentLoaded", () => {
       await apiRequest("/api/admin/save-seed", "POST", {
         admin_password: getAdminPassword(),
       });
-      showToast("Sparade deltagare, undantag och täcknamn till seed.json! 💾");
+      showToast("Sparat till seed.json! 💾");
     } catch (err) {
       showToast(err.message, true);
     }
@@ -799,7 +735,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Reset from seed.json
   document.getElementById("resetSeedBtn").addEventListener("click", async () => {
-    if (!confirm("Vill du återställa hela databasen från seed.json? Alla valda lösenord och pågående lottning nollställs.")) {
+    if (!confirm("Vill du återställa allt från seed.json och slumpa en ny kedja?")) {
       return;
     }
     try {
@@ -809,7 +745,7 @@ document.addEventListener("DOMContentLoaded", () => {
       currentSession = null;
       selectedLoginUserId = null;
       await loadState();
-      showToast("Återställde allt från seed.json! 🔄");
+      showToast("Återställt från seed.json! 🔄");
     } catch (err) {
       showToast(err.message, true);
     }
@@ -817,11 +753,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Lock & Go Live
   document.getElementById("goLiveBtn").addEventListener("click", async () => {
-    if (
-      !confirm(
-        "Är du redo att låsa lottningen och gå live?\n\nDetta raderar all utvecklar-insyn ur databasen så att inte ens administratören kan se vem som har fått vem."
-      )
-    ) {
+    if (!confirm("Låsa lottningen och radera all admin-insyn?")) {
       return;
     }
     try {
@@ -829,7 +761,7 @@ document.addEventListener("DOMContentLoaded", () => {
         admin_password: getAdminPassword(),
       });
       await loadState();
-      showToast("Nu är sidan LIVE och utvecklar-insynen är raderad! 🎄🔒");
+      showToast("Nu är sidan LIVE och admin-insynen är raderad! 🔒");
     } catch (err) {
       showToast(err.message, true);
     }

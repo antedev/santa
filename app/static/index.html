@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Julklappsspelet – Secret Santa</title>
+  <title>Julklappsspelet</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
@@ -11,371 +11,264 @@
 
   <header class="hero">
     <div class="hero-inner">
-      <div class="status-badges">
-        <span id="liveBadge" class="badge badge-setup">Förberedelseläge</span>
-        <span id="devBadge" class="badge badge-dev hidden">🛠️ Utvecklarläge aktivt</span>
-      </div>
-      <h1 id="eventTitle">Julklappsspelet – Secret Santa</h1>
-      <p id="budgetInfo" class="subtitle">Laddar julstämning...</p>
+      <h1 id="eventTitle">🎄 Julklappsspelet</h1>
+      <p id="budgetInfo" class="subtitle">Secret Santa för familjen</p>
     </div>
   </header>
 
-  <nav class="tabs" role="tablist">
-    <button class="tab-btn active" data-tab="tab-my-santa" role="tab">🎅 Min Julklappslott</button>
-    <button class="tab-btn" data-tab="tab-kids" role="tab">👶 Barnens Hörna</button>
-    <button class="tab-btn" data-tab="tab-chain" role="tab">🔗 Kedjan &amp; Bevis</button>
-    <button class="tab-btn" data-tab="tab-admin" role="tab">⚙️ Förbered &amp; Seed</button>
+  <!-- Navigation tabs: ONLY shown after a user logs in (or when Admin view is opened) -->
+  <nav id="mainNav" class="tabs hidden" role="tablist">
+    <button class="tab-btn active" data-tab="tab-my-santa" role="tab">🎅 Min Julklapp</button>
+    <button class="tab-btn" data-tab="tab-kids" role="tab">👶 Barnen</button>
+    <button class="tab-btn" data-tab="tab-chain" role="tab">🔗 Kedjan</button>
+    <button id="adminTabBtn" class="tab-btn hidden" data-tab="tab-admin" role="tab">⚙️ Admin</button>
   </nav>
 
   <main class="container">
     <div id="toast" class="toast hidden"></div>
 
-    <!-- TAB 1: MIN JULKLAPPSLOTT -->
-    <section id="tab-my-santa" class="tab-panel active">
-      <!-- Login Card -->
-      <div id="loginCard" class="card">
-        <h2>Logga in till din julklappslott</h2>
-        <p class="muted">
-          Välj ditt namn nedan. <strong>Första gången</strong> du loggar in väljer du en egen PIN-kod eller ett lösenord
-          (minst 2 tecken). Ditt lösenord krypterar din lott så att inte ens administratören kan se vem du ska köpa till!
-        </p>
+    <!-- LOGIN SCREEN (Only thing visible before logging in!) -->
+    <section id="loginScreen">
+      <div class="card login-card">
+        <h2 class="center-title">Vem är du?</h2>
+        <p class="muted center-text">Välj ditt namn för att logga in.</p>
 
         <div class="participant-grid" id="loginUserGrid"></div>
 
+        <div id="kidsLoginDivider" class="kids-divider">
+          <span>Barnen</span>
+        </div>
+        <div class="participant-grid kids-login-grid" id="loginKidsGrid"></div>
+
         <form id="loginForm" class="login-form hidden">
-          <div class="selected-user-banner">
-            <span>Vald deltagare: <strong id="selectedUserName">-</strong></span>
-            <span id="selectedUserStatus" class="tag"></span>
-          </div>
-          <label for="loginPassword" id="passwordPromptLabel">Välj eller ange ditt personliga lösenord / PIN:</label>
+          <label for="loginPassword" id="passwordPromptLabel">PIN-kod / lösenord:</label>
           <div class="input-row">
             <input
               type="password"
               id="loginPassword"
-              placeholder="Ange ditt lösenord eller PIN..."
+              placeholder="Minst 2 tecken..."
               required
               minlength="2"
               autocomplete="current-password"
             />
-            <button type="submit" class="btn btn-primary">Öppna mitt konto 🎄</button>
+            <button type="submit" class="btn btn-primary">Logga in 🎄</button>
           </div>
         </form>
       </div>
+    </section>
 
-      <!-- Logged-in Dashboard -->
-      <div id="userDashboard" class="hidden">
-        <div class="user-bar card">
-          <div>
-            <span class="muted">Inloggad som:</span>
-            <strong id="loggedInName" class="user-bar-name"></strong>
-            <span id="loggedInRoleBadge" class="tag"></span>
-          </div>
-          <button id="logoutBtn" class="btn btn-outline btn-sm">Logga ut</button>
+    <!-- LOGGED-IN APP CONTENT -->
+    <div id="appContent" class="hidden">
+      <div id="userBar" class="user-bar card">
+        <div>
+          <span class="muted">Inloggad som</span>
+          <strong id="loggedInName" class="user-bar-name"></strong>
         </div>
+        <button id="logoutBtn" class="btn btn-outline btn-sm">Byt person / Logga ut</button>
+      </div>
 
+      <!-- TAB 1: MIN JULKLAPP -->
+      <section id="tab-my-santa" class="tab-panel active">
         <!-- Adult Secret Santa Lottery / Match Section -->
         <div id="adultLotterySection" class="card highlight-card">
-          <!-- State A: Draw not generated by admin yet -->
           <div id="drawNotReadyBox" class="hidden center-box">
-            <h3>⏳ Tomten förbereder fortfarande lottningen</h3>
-            <p class="muted">
-              Lottningen är inte aktiverad ännu. Under tiden kan du fylla i din önskelista här nedanför!
-            </p>
+            <h3>⏳ Lottningen förbereds</h3>
+            <p class="muted">Du kan skriva din önskelista här nedanför så länge!</p>
           </div>
 
-          <!-- State B: Ready to spin the lottery wheel (Illusion of the lottery!) -->
+          <!-- Ready to spin the lottery wheel -->
           <div id="lotteryMachineBox" class="hidden center-box">
-            <div class="santa-hat-icon">🎩✨</div>
-            <h2>Tomtens Lottdragning</h2>
+            <div class="santa-hat-icon">🎅✨</div>
+            <h2>Dra din julklappslott!</h2>
             <p class="muted">
-              Alla deltagare är med i en sammanhängande hemlig kedja. Tryck på knappen för att dra din hemliga julklappslott!
+              Tryck på knappen för att dra vem du ska köpa julklapp till i år.
             </p>
 
             <div class="slot-window" id="slotWindow">
-              <div class="slot-text" id="slotText">🎁 Tryck för att dra din lott! 🎁</div>
+              <div class="slot-text" id="slotText">🎁 Redo att dra lott 🎁</div>
             </div>
 
             <button id="spinLotteryBtn" class="btn btn-gold btn-lg">
-              🎲 Dra min julklappslott!
+              🎲 Dra min lott!
             </button>
           </div>
 
-          <!-- State C: Match Revealed -->
+          <!-- Match Revealed -->
           <div id="matchRevealedBox" class="hidden">
-            <div class="alias-pill-row">
-              <span class="alias-pill">
-                🎭 Ditt hemliga alias på tavlan: <strong id="myAliasText"></strong>
-              </span>
-            </div>
-
             <div class="gift-reveal-card">
-              <p class="reveal-overline">Du ska ge en julklapp till:</p>
+              <p class="reveal-overline">Du ska köpa en julklapp till:</p>
               <h2 class="reveal-target-name" id="targetPersonName"></h2>
               <div class="target-wishlist-box">
-                <h4>📜 Önskelista från <span id="targetWishlistOwner"></span>:</h4>
+                <h4>📜 <span id="targetWishlistOwner"></span>s önskelista:</h4>
                 <p id="targetWishlistText" class="wishlist-content"></p>
               </div>
             </div>
 
-            <div class="replay-row">
+            <div class="alias-pill-row">
+              <span class="alias-pill">
+                🎭 Ditt hemliga täcknamn i kedjan: <strong id="myAliasText"></strong>
+              </span>
               <button id="replaySpinBtn" class="btn btn-outline btn-sm">
-                🎰 Visa lottdragningen igen
+                🎰 Snurra igen
               </button>
             </div>
           </div>
         </div>
 
-        <!-- Kid Notice Section (if logged in user is a kid) -->
+        <!-- Kid Welcome Section -->
         <div id="kidWelcomeSection" class="card highlight-card hidden">
-          <h2>🎄 Välkommen till Barnens Julklappshörna!</h2>
-          <p>
-            Du är med i barnens julklappshörna! Skriv gärna vad du önskar dig i din önskelista nedan,
-            och kika under fliken <strong>Barnens Hörna</strong> om du också vill vara med och ge en julklapp!
+          <h2>🎄 Hej!</h2>
+          <p class="muted">
+            Skriv vad du önskar dig i julklapp här nedanför. Om du också vill ge en julklapp till någon kan du göra det under fliken <strong>👶 Barnen</strong>!
           </p>
         </div>
 
         <!-- Personal Wishlist Editor -->
         <div class="card">
           <h3>✍️ Min önskelista</h3>
-          <p class="muted">
-            Det du skriver här visas för den hemliga personen som ska köpa julklapp till dig (och i Barnens Hörna om du är barn).
-          </p>
           <form id="wishlistForm">
             <textarea
               id="myWishlistInput"
               rows="3"
-              placeholder="Skriv några saker du önskar dig, t.ex. böcker, choklad, ullstrumpor..."
+              placeholder="Skriv vad du önskar dig här..."
             ></textarea>
             <div class="form-actions">
-              <button type="submit" class="btn btn-primary">Spara önskelista 💾</button>
+              <button type="submit" class="btn btn-primary">Spara önskelista</button>
             </div>
           </form>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- TAB 2: BARNENS HÖRNA (KIDS BONUS POOL) -->
-    <section id="tab-kids" class="tab-panel">
-      <div class="card">
-        <h2>👶 Barnens Julklappshörna</h2>
-        <p class="muted">
-          Barnen står utanför vuxenlänken och kan både få julklappar och själva vara med och ge julklappar om de vill!
-          Här kan vem som helst (vuxen eller barn) paxa att ge en julklapp, helt anonymt eller med sitt hemliga alias.
-        </p>
-
-        <div id="kidsListContainer" class="kids-grid"></div>
-      </div>
-
-      <div class="card">
-        <h3>🎁 Anmäl att du ger en extra julklapp (Barnhörnan)</h3>
-        <p class="muted" id="kidGiftLoginHint">
-          Logga in under fliken <strong>Min Julklappslott</strong> först för att lägga till en klapp här.
-        </p>
-
-        <form id="kidGiftForm" class="hidden">
-          <div class="form-grid">
-            <div>
-              <label for="kidGiftRecipient">Vem ska få julklappen?</label>
-              <select id="kidGiftRecipient" required></select>
-            </div>
-            <div>
-              <label for="kidGiftMode">Hur vill du visas på listan?</label>
-              <select id="kidGiftMode">
-                <option value="secret">Som "En hemlig tomte 🎅" (Anonymt)</option>
-                <option value="alias">Med mitt hemliga täcknamn/alias 🦌</option>
-                <option value="name">Med mitt riktiga namn</option>
-              </select>
-            </div>
-          </div>
-          <label for="kidGiftNote">Kommentar / ledtråd (valfritt, t.ex. "Har paxat LEGO" så inte två köper samma):</label>
-          <div class="input-row">
-            <input
-              type="text"
-              id="kidGiftNote"
-              placeholder="T.ex. En mysig klapp är ordnad!"
-            />
-            <button type="submit" class="btn btn-primary">Lägg till klapp 🎁</button>
-          </div>
-        </form>
-      </div>
-    </section>
-
-    <!-- TAB 3: KEDJAN & BEVIS (PUBLIC ALIAS VERIFICATION) -->
-    <section id="tab-chain" class="tab-panel">
-      <div class="card">
-        <h2>🔗 Den sammanhängande julklappskedjan</h2>
-        <p class="muted">
-          För att bevisa att <strong>alla vuxna får en julklapp</strong>, att <strong>alla ger en julklapp</strong>,
-          och att <strong>ingen bara byter med samma person (A ↔ B)</strong>, visas hela kedjan här med hemliga täcknamn!
-        </p>
-
-        <div id="chainVisualization" class="chain-box"></div>
-      </div>
-
-      <div class="card">
-        <h3>📋 Status för alla hemliga täcknamn</h3>
-        <p class="muted">
-          Här syns vilka täcknamn som har loggat in och dragit sin julklappslott. Ordningen är slumpad så att ingen kan gissa vem som är vem.
-        </p>
-        <div id="aliasStatusGrid" class="alias-status-grid"></div>
-      </div>
-    </section>
-
-    <!-- TAB 4: FÖRBERED & SEED (ADMIN / PRE-LIVE SETUP) -->
-    <section id="tab-admin" class="tab-panel">
-      <div class="card">
-        <div class="admin-header-row">
-          <div>
-            <h2>⚙️ Förbered lottning &amp; Redigera Seed</h2>
-            <p class="muted">
-              Här kan du redigera deltagare, barn, undantag (t.ex. par) och förgenerera vem som ger till vem innan sidan går live.
-            </p>
-          </div>
-          <div class="admin-pw-box">
-            <label for="adminPasswordInput">Admin-lösenord:</label>
-            <input
-              type="password"
-              id="adminPasswordInput"
-              value="tomten"
-              placeholder="Standard: tomten"
-            />
-          </div>
-        </div>
-
-        <div id="liveLockedBanner" class="alert alert-locked hidden">
-          <strong>🔒 Sidan är i Live-läge!</strong>
-          <p>
-            Lottningen är låst och all utvecklar-insyn är raderad så att inte ens administratören kan se vem som har vem.
-            Om du vill nollställa allt och börja om på nytt kan du klicka på <em>Återställ från seed.json</em> längst ner.
+      <!-- TAB 2: BARNEN (Louise, Josefin & Elise) -->
+      <section id="tab-kids" class="tab-panel">
+        <div class="card">
+          <h2>👶 Barnens julklappar</h2>
+          <p class="muted">
+            Louise, Josefin och Elise är utanför vuxenlänken. Här kan du se deras önskelistor och markera om du köper eller vill ge en klapp.
           </p>
+          <div id="kidsListContainer" class="kids-grid"></div>
         </div>
 
-        <!-- Step 1: Event & Aliases -->
-        <div id="adminEditableArea">
-          <div class="admin-section">
-            <h3>1. Rubrik, Budget &amp; Täcknamn (Aliases)</h3>
-            <form id="adminSettingsForm">
-              <div class="form-grid">
-                <div>
-                  <label for="adminTitleInput">Rubrik på sidan:</label>
-                  <input type="text" id="adminTitleInput" required />
-                </div>
-                <div>
-                  <label for="adminBudgetInput">Budget / Info:</label>
-                  <input type="text" id="adminBudgetInput" />
-                </div>
-              </div>
-              <label for="adminAliasesInput">Hemliga täcknamn (ett per rad eller separerade med kommatecken):</label>
-              <textarea id="adminAliasesInput" rows="3"></textarea>
-              <div class="form-actions">
-                <button type="submit" class="btn btn-outline">Spara inställningar</button>
-              </div>
-            </form>
-          </div>
-
-          <!-- Step 2: Participants (Seed editor) -->
-          <div class="admin-section">
-            <h3>2. Deltagare (Vuxna &amp; Barn)</h3>
-            <p class="muted">
-              Lägg till eller ändra deltagare. Vuxna ingår i den hemliga lottningskedjan; barn hamnar i Barnens Hörna.
-            </p>
-
-            <div id="adminParticipantsList" class="admin-list"></div>
-
-            <form id="adminAddParticipantForm" class="add-row-form">
-              <input type="text" id="newPartName" placeholder="Namn (t.ex. Kalle)" required />
-              <select id="newPartRole">
-                <option value="adult">🎅 Vuxen (Huvudlottning)</option>
-                <option value="kid">👶 Barn (Barnhörnan)</option>
-              </select>
-              <input type="text" id="newPartWishlist" placeholder="Start-önskelista (valfritt)" />
-              <button type="submit" class="btn btn-primary">+ Lägg till</button>
-            </form>
-          </div>
-
-          <!-- Step 3: Exclusions -->
-          <div class="admin-section">
-            <h3>3. Undantagsregler (Par som inte ska dra varandra)</h3>
-            <p class="muted">
-              Utöver att algoritmen automatiskt förbjuder att två personer byter med varandra (A ↔ B), kan du här ange par som inte ska ge till varandra alls.
-            </p>
-            <div id="adminExclusionsList" class="chip-list"></div>
-
-            <form id="adminAddExclusionForm" class="add-row-form">
-              <select id="exclUserA" required></select>
-              <span>ska inte dra</span>
-              <select id="exclUserB" required></select>
-              <button type="submit" class="btn btn-outline">+ Lägg till undantag</button>
-            </form>
-          </div>
-
-          <!-- Step 4: Pre-generate Draw -->
-          <div class="admin-section highlight-admin-box">
-            <h3>4. Förgenerera lottningskedjan i förväg</h3>
-            <p class="muted">
-              Generera hela kedjan i förväg! När deltagarna sedan loggar in och klickar på <em>"Dra min julklappslott"</em>
-              visas ett lotterihjul som ger känslan av att lotten dras i stunden, men lotten är redan säkert bestämd i bakgrunden.
-            </p>
-
+        <div class="card">
+          <h3>🎁 Lägg till att du ger en extra julklapp</h3>
+          <form id="kidGiftForm">
             <div class="form-grid">
               <div>
-                <label for="drawSeedInput">Valfritt slump-frö (lämna tomt för helt slumpad kedja):</label>
-                <input type="text" id="drawSeedInput" placeholder="T.ex. julen2026 (eller lämna tomt)" />
+                <label for="kidGiftRecipient">Till vem?</label>
+                <select id="kidGiftRecipient" required></select>
               </div>
               <div>
-                <label for="customOrderSelect">Eller styr kedjans ordning manuellt (valfritt):</label>
-                <input
-                  type="text"
-                  id="customOrderInput"
-                  placeholder="Valfritt: Namn1, Namn2, Namn3..."
-                />
+                <label for="kidGiftMode">Visa mig som:</label>
+                <select id="kidGiftMode">
+                  <option value="secret">En hemlig tomte 🎅 (Anonymt)</option>
+                  <option value="alias">Mitt hemliga täcknamn 🦌</option>
+                  <option value="name">Mitt riktiga namn</option>
+                </select>
               </div>
             </div>
+            <label for="kidGiftNote">Kommentar (valfritt, t.ex. vad du har paxat):</label>
+            <div class="input-row">
+              <input
+                type="text"
+                id="kidGiftNote"
+                placeholder="T.ex. Jag fixar ett paket!"
+              />
+              <button type="submit" class="btn btn-primary">Spara 🎁</button>
+            </div>
+          </form>
+        </div>
+      </section>
 
-            <div class="form-actions">
-              <button type="button" id="generateDrawBtn" class="btn btn-gold">
-                🎲 Förgenerera lottningskedja nu
-              </button>
+      <!-- TAB 3: KEDJAN (PUBLIC ALIAS VERIFICATION) -->
+      <section id="tab-chain" class="tab-panel">
+        <div class="card">
+          <h2>🔗 Hela julklappskedjan</h2>
+          <p class="muted">
+            Här syns att alla 6 vuxna hänger ihop i en enda stor cirkel (ingen A ↔ B) med sina hemliga täcknamn, och hur många som har dragit sin lott.
+          </p>
+          <div id="chainVisualization" class="chain-box"></div>
+          <div id="aliasStatusGrid" class="alias-status-grid"></div>
+        </div>
+      </section>
+
+      <!-- TAB 4: ADMIN (Hidden unless opened from footer) -->
+      <section id="tab-admin" class="tab-panel">
+        <div class="card">
+          <div class="admin-header-row">
+            <div>
+              <h2>⚙️ Administratör &amp; Seed</h2>
+              <p class="muted">Hantera deltagare, undantag och lottning.</p>
+            </div>
+            <div class="admin-pw-box">
+              <label for="adminPasswordInput">Admin-lösenord:</label>
+              <input type="password" id="adminPasswordInput" value="tomten" />
+            </div>
+          </div>
+
+          <div id="liveLockedBanner" class="alert alert-locked hidden">
+            <strong>🔒 Sidan är i Live-läge!</strong>
+            <p style="margin:0.25rem 0 0;">
+              All utvecklar-insyn är raderad så att inte ens admin kan se vem som har fått vem.
+            </p>
+          </div>
+
+          <div id="adminEditableArea">
+            <div class="admin-section">
+              <h3>Deltagare</h3>
+              <div id="adminParticipantsList" class="admin-list"></div>
+              <form id="adminAddParticipantForm" class="add-row-form">
+                <input type="text" id="newPartName" placeholder="Namn" required />
+                <select id="newPartRole">
+                  <option value="adult">🎅 Vuxen</option>
+                  <option value="kid">👶 Barn</option>
+                </select>
+                <input type="text" id="newPartWishlist" placeholder="Önskelista (valfritt)" />
+                <button type="submit" class="btn btn-primary">+ Lägg till</button>
+              </form>
+            </div>
+
+            <div class="admin-section">
+              <h3>Par som inte ska dra varandra</h3>
+              <div id="adminExclusionsList" class="chip-list"></div>
+              <form id="adminAddExclusionForm" class="add-row-form">
+                <select id="exclUserA" required></select>
+                <span>↔</span>
+                <select id="exclUserB" required></select>
+                <button type="submit" class="btn btn-outline">+ Lägg till undantag</button>
+              </form>
+            </div>
+
+            <div class="admin-section">
+              <h3>Slumpa ny kedja</h3>
+              <div class="input-row">
+                <input type="text" id="drawSeedInput" placeholder="Valfritt frö (lämna tomt för slump)" />
+                <button type="button" id="generateDrawBtn" class="btn btn-gold">
+                  🎲 Generera ny lottningskedja
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div id="devInspectorBox" class="admin-section dev-box hidden">
+            <h3>🛠️ Utvecklarläge: Förhandsvisning (Raderas vid Gå Live)</h3>
+            <div id="devCycleTableContainer"></div>
+          </div>
+
+          <div class="admin-section admin-footer-actions">
+            <div class="button-group">
+              <button type="button" id="saveSeedBtn" class="btn btn-outline">💾 Spara till seed.json</button>
+              <button type="button" id="resetSeedBtn" class="btn btn-outline">🔄 Återställ från seed.json</button>
+              <button type="button" id="goLiveBtn" class="btn btn-primary">🔒 Lås &amp; Gå Live (Dölj för admin)</button>
             </div>
           </div>
         </div>
-
-        <!-- Dev Mode Inspector (Only visible before Go Live when DEV_MODE is on) -->
-        <div id="devInspectorBox" class="admin-section dev-box hidden">
-          <h3>🛠️ Utvecklarläge: Kontrollera den förgenererade kedjan</h3>
-          <p class="muted">
-            Denna ruta finns <strong>endast under utveckling</strong> för att du ska kunna verifiera att kedjan och undantagen fungerar.
-            När du klickar på <strong>"Lås &amp; Gå Live"</strong> nedan raderas denna tabell permanent ur databasen!
-          </p>
-          <div id="devCycleTableContainer"></div>
-        </div>
-
-        <!-- Step 5: Seed File & Go Live Actions -->
-        <div class="admin-section admin-footer-actions">
-          <div>
-            <h3>5. Spara Seed &amp; Gå Live</h3>
-            <p class="muted">
-              Du kan spara dina ändringar till <code>seed.json</code> och sedan låsa lottningen inför julfirandet.
-            </p>
-          </div>
-          <div class="button-group">
-            <button type="button" id="saveSeedBtn" class="btn btn-outline">
-              💾 Spara nuvarande till seed.json
-            </button>
-            <button type="button" id="resetSeedBtn" class="btn btn-outline">
-              🔄 Återställ från seed.json
-            </button>
-            <button type="button" id="goLiveBtn" class="btn btn-primary btn-lg">
-              🔒 Lås &amp; Gå Live (Radera admin-insyn)
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
+      </section>
+    </div>
   </main>
 
   <footer class="footer">
-    <p>🎄 Julklappsspelet – Krypterad Secret Santa för familjen • Redo för Raspberry Pi 5 🍓</p>
+    <span>🎄 Julklappsspelet</span>
+    <button type="button" id="openAdminFooterBtn" class="footer-link-btn">⚙️ Admin</button>
   </footer>
 
   <script src="/static/app.js"></script>
