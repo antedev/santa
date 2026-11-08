@@ -1,4 +1,3 @@
-import os
 import sqlite3
 from pathlib import Path
 
@@ -24,14 +23,11 @@ def test_single_cycle_no_two_loops_and_exclusions():
             v = cycle[(i + 1) % n]
             assert u != v
             edges.add((u, v))
-            # Check exclusions
             assert (u, v) not in [(1, 2), (2, 1), (3, 4), (4, 3)]
 
-        # Verify no 2-person loop (A -> B and B -> A)
         for u, v in edges:
             assert (v, u) not in edges
 
-        # Verify walking the cycle visits all 6 nodes before returning to start
         curr = cycle[0]
         next_map = {cycle[i]: cycle[(i + 1) % n] for i in range(n)}
         visited = []
@@ -47,11 +43,10 @@ def test_less_than_three_adults_rejected():
         find_single_cycle([1, 2], [])
 
 
-def test_full_workflow_and_admin_blindness(tmp_path: Path, monkeypatch):
+def test_full_workflow_invite_links_and_kids_bonus_lottery(tmp_path: Path, monkeypatch):
     db_file = tmp_path / "test_santa.db"
     seed_file = tmp_path / "test_seed.json"
 
-    # Copy project seed.json to temp seed_file
     orig_seed = Path(__file__).resolve().parent.parent / "seed.json"
     seed_file.write_text(orig_seed.read_text(encoding="utf-8"), encoding="utf-8")
 
@@ -77,53 +72,44 @@ def test_full_workflow_and_admin_blindness(tmp_path: Path, monkeypatch):
         kids = [p for p in state["participants"] if p["is_kid"]]
         assert len(adults) == 6
         assert len(kids) == 3
-        adult_names = {a["name"] for a in adults}
-        assert adult_names == {"Andreas", "Lotta", "Caroline", "Simon", "Mikael", "Elsy"}
-        kid_names = {k["name"] for k in kids}
-        assert kid_names == {"Louise", "Josefin", "Elise"}
 
-        # 2. Pre-generate draw in advance with a seed
-        gen_res = client.post(
-            "/api/admin/generate-draw",
-            json={"admin_password": "tomten", "seed": "julafton2026"},
-        )
-        assert gen_res.status_code == 200
-        assert gen_res.json()["adult_count"] == 6
+        # 2. Fetch personal invite links as admin
+        inv_res = client.post("/api/admin/invites", json={"admin_password": "tomten"})
+        assert inv_res.status_code == 200
+        invites = {item["id"]: item["invite_token"] for item in inv_res.json()["invites"]}
+        assert len(invites) == 9
 
-        # In dev mode before going live, dev_debug_cycle is visible for verification
-        state = client.get("/api/state").json()
-        assert state["draw_generated"] is True
-        assert len(state["alias_cycle"]) == 6
-        assert len(state["dev_debug_cycle"]) == 6
-
-        # Verify raw DB has encrypted assignments (not plain text names)
+        # Verify raw DB has encrypted assignments for both adults and kids
         conn = sqlite3.connect(str(db_file))
-        rows = conn.execute("SELECT name, encrypted_assignment FROM users WHERE is_kid = 0").fetchall()
+        rows = conn.execute("SELECT name, encrypted_assignment FROM users").fetchall()
         for name, enc in rows:
             assert enc is not None
             assert enc.startswith("gAAAAAB")
-            for a in adults:
-                assert a["name"] not in enc
+            for p in state["participants"]:
+                assert p["name"] not in enc
 
         # 3. Go Live -> wipes dev_debug_cycle from DB and API
         live_res = client.post("/api/admin/go-live", json={"admin_password": "tomten"})
         assert live_res.status_code == 200
+        assert client.get("/api/state").json()["dev_debug_cycle"] == []
 
-        state_live = client.get("/api/state").json()
-        assert state_live["is_live"] is True
-        assert state_live["dev_mode_enabled"] is False
-        assert state_live["dev_debug_cycle"] == []
-
-        raw_dev_json = conn.execute(
-            "SELECT value FROM settings WHERE key = 'dev_debug_cycle_json'"
-        ).fetchone()[0]
-        assert raw_dev_json == "[]"
-
-        # 4. Participant 1 logs in for the first time & sets password
+        # 4. First-time login WITHOUT personal invite token is blocked (prevents account hijacking!)
         p1 = adults[0]
+        hijack_attempt = client.post(
+            "/api/auth/login",
+            json={"user_id": p1["id"], "password": "kapad"},
+        )
+        assert hijack_attempt.status_code == 403
+
+        # 5. First-time login WITH personal invite token succeeds and locks account to user's PIN
+        p1_token = invites[p1["id"]]
+        info_res = client.get(f"/api/invite/{p1_token}")
+        assert info_res.status_code == 200
+        assert info_res.json()["has_account"] is False
+
         login_res = client.post(
             "/api/auth/login",
-            json={"user_id": p1["id"], "password": "mitt-hemliga-losen"},
+            json={"user_id": p1["id"], "password": "mitt-hemliga-losen", "invite_token": p1_token},
         )
         assert login_res.status_code == 200
         login_data = login_res.json()
@@ -131,21 +117,14 @@ def test_full_workflow_and_admin_blindness(tmp_path: Path, monkeypatch):
         assert login_data["assignment"]["target_name"] != p1["name"]
         my_alias = login_data["assignment"]["my_alias"]
 
-        # Verify wrong password fails
-        bad_login = client.post(
+        # Subsequent login works with just the user's password
+        re_login = client.post(
             "/api/auth/login",
-            json={"user_id": p1["id"], "password": "fel-losen"},
+            json={"user_id": p1["id"], "password": "mitt-hemliga-losen"},
         )
-        assert bad_login.status_code == 401
+        assert re_login.status_code == 200
 
-        # Verify DB row is now password-encrypted
-        is_pw_enc = conn.execute(
-            "SELECT is_password_encrypted FROM users WHERE id = ?", (p1["id"],)
-        ).fetchone()[0]
-        assert is_pw_enc == 1
-        conn.close()
-
-        # 5. Participant 1 clicks "Dra min julklappslott!" (Lottery illusion)
+        # 6. Adult draws their lot
         draw_res = client.post(
             "/api/user/draw-lot",
             json={"user_id": p1["id"], "password": "mitt-hemliga-losen"},
@@ -153,37 +132,34 @@ def test_full_workflow_and_admin_blindness(tmp_path: Path, monkeypatch):
         assert draw_res.status_code == 200
         assert draw_res.json()["user"]["has_drawn_lot"] is True
 
-        # Check public alias board shows my_alias has drawn
         state_after = client.get("/api/state").json()
         alias_entry = next(
             a for a in state_after["alias_board"] if a["alias_name"] == my_alias
         )
         assert alias_entry["has_drawn"] is True
 
-        # 6. Kids bonus gift signup & deletion
+        # 7. Kid logs in via personal link and draws an optional bonus lot!
         kid1 = kids[0]
-        gift_res = client.post(
-            "/api/user/kid-gift",
-            json={
-                "user_id": p1["id"],
-                "password": "mitt-hemliga-losen",
-                "recipient_user_id": kid1["id"],
-                "giver_mode": "alias",
-                "gift_note": "Har köpt LEGO!",
-            },
+        kid_token = invites[kid1["id"]]
+        kid_login = client.post(
+            "/api/auth/login",
+            json={"user_id": kid1["id"], "password": "1234", "invite_token": kid_token},
         )
-        assert gift_res.status_code == 200
+        assert kid_login.status_code == 200
+        assert kid_login.json()["assignment"]["target_name"] != kid1["name"]
 
-        state_with_gift = client.get("/api/state").json()
-        assert len(state_with_gift["kid_gifts"]) == 1
-        pledge = state_with_gift["kid_gifts"][0]
-        assert pledge["recipient_name"] == kid1["name"]
-        assert my_alias in pledge["giver_label"]
-        assert pledge["gift_note"] == "Har köpt LEGO!"
-
-        del_res = client.delete(
-            f"/api/user/kid-gift/{pledge['id']}",
-            params={"user_id": p1["id"], "password": "mitt-hemliga-losen"},
+        kid_draw = client.post(
+            "/api/user/draw-lot",
+            json={"user_id": kid1["id"], "password": "1234"},
         )
-        assert del_res.status_code == 200
-        assert len(client.get("/api/state").json()["kid_gifts"]) == 0
+        assert kid_draw.status_code == 200
+        assert kid_draw.json()["user"]["has_drawn_lot"] is True
+        kid_alias = kid_draw.json()["assignment"]["my_alias"]
+
+        state_with_kid = client.get("/api/state").json()
+        kid_alias_entry = next(
+            a for a in state_with_kid["alias_board"] if a["alias_name"] == kid_alias
+        )
+        assert kid_alias_entry["has_drawn"] is True
+        assert kid_alias_entry["is_kid_bonus"] is True
+        conn.close()

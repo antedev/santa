@@ -1,9 +1,12 @@
-// Julklappsspelet – Clean Frontend Logic
+// Julklappsspelet – Frontend Logic
 
 let appState = null;
 let selectedLoginUserId = null;
-let currentSession = null; // { user, assignment, password }
+let currentInviteToken = null; // From URL ?u=...
+let currentInviteInfo = null;  // { id, name, is_kid, has_account, invite_token }
+let currentSession = null;     // { user, assignment, password }
 let adminViewOpen = false;
+let adminInvitesCache = [];
 
 // --- Utilities ---
 
@@ -42,6 +45,10 @@ function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str ?? "";
   return div.innerHTML;
+}
+
+function buildPersonalLink(token) {
+  return `${window.location.origin}/?u=${encodeURIComponent(token)}`;
 }
 
 // --- Snowflakes ---
@@ -84,6 +91,22 @@ function initTabs() {
   });
 }
 
+// --- URL Invite Token Inspection ---
+
+async function checkInviteUrlToken() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("u");
+  if (!token) return;
+  try {
+    const info = await apiRequest(`/api/invite/${encodeURIComponent(token)}`);
+    currentInviteToken = token;
+    currentInviteInfo = info;
+    selectedLoginUserId = info.id;
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
 // --- State Loading & Rendering ---
 
 async function loadState() {
@@ -95,8 +118,11 @@ async function loadState() {
     renderLayoutVisibility();
     renderLoginScreen();
     renderUserDashboard();
-    renderKidsCorner();
+    renderKidsWishlists();
     renderChainVerification();
+    if (adminViewOpen) {
+      await loadAdminInvites();
+    }
     renderAdminPanel();
   } catch (err) {
     showToast(err.message, true);
@@ -111,12 +137,10 @@ function renderLayoutVisibility() {
   const adminTabBtn = document.getElementById("adminTabBtn");
 
   if (!currentSession && !adminViewOpen) {
-    // Only show clean login screen!
     loginScreen.classList.remove("hidden");
     mainNav.classList.add("hidden");
     appContent.classList.add("hidden");
   } else if (!currentSession && adminViewOpen) {
-    // Discreet admin mode opened from footer while logged out
     loginScreen.classList.add("hidden");
     mainNav.classList.remove("hidden");
     appContent.classList.remove("hidden");
@@ -124,7 +148,6 @@ function renderLayoutVisibility() {
     adminTabBtn.classList.remove("hidden");
     switchTab("tab-admin");
   } else {
-    // Logged in user
     loginScreen.classList.add("hidden");
     mainNav.classList.remove("hidden");
     appContent.classList.remove("hidden");
@@ -133,7 +156,7 @@ function renderLayoutVisibility() {
   }
 }
 
-// --- Login Screen (Simple Name Picker) ---
+// --- Login Screen ---
 
 function createNameTile(p) {
   const btn = document.createElement("button");
@@ -143,20 +166,60 @@ function createNameTile(p) {
   btn.addEventListener("click", () => {
     selectedLoginUserId = p.id;
     renderLoginScreen();
-    const loginForm = document.getElementById("loginForm");
-    loginForm.classList.remove("hidden");
-    document.getElementById("passwordPromptLabel").textContent = p.has_account
-      ? `Ange din PIN-kod / lösenord, ${p.name}:`
-      : `Välj en egen PIN-kod / lösenord, ${p.name} (första inloggningen):`;
-    document.getElementById("loginPassword").focus();
+    updateLoginFormPrompt(p);
   });
   return btn;
 }
 
+function updateLoginFormPrompt(p) {
+  const loginForm = document.getElementById("loginForm");
+  const needInviteNotice = document.getElementById("needInviteNotice");
+  const hasMatchingToken = currentInviteInfo && currentInviteInfo.id === p.id;
+
+  if (!p.has_account && !hasMatchingToken) {
+    // First-time login without personal link -> block and explain!
+    loginForm.classList.add("hidden");
+    needInviteNotice.classList.remove("hidden");
+    return;
+  }
+
+  needInviteNotice.classList.add("hidden");
+  loginForm.classList.remove("hidden");
+  document.getElementById("passwordPromptLabel").textContent = p.has_account
+    ? `Ange din PIN-kod / lösenord, ${p.name}:`
+    : `Välj en egen PIN-kod / lösenord, ${p.name} (låser ditt konto):`;
+  document.getElementById("loginPassword").focus();
+}
+
 function renderLoginScreen() {
+  const inviteBanner = document.getElementById("inviteBanner");
+  const namePickerArea = document.getElementById("namePickerArea");
   const adultsGrid = document.getElementById("loginUserGrid");
   const kidsGrid = document.getElementById("loginKidsGrid");
   const kidsDivider = document.getElementById("kidsLoginDivider");
+
+  // If user arrived via personal link (?u=TOKEN)
+  if (currentInviteInfo) {
+    const freshUser = appState.participants.find((u) => u.id === currentInviteInfo.id);
+    if (freshUser) {
+      currentInviteInfo.has_account = freshUser.has_account;
+      selectedLoginUserId = freshUser.id;
+      inviteBanner.classList.remove("hidden");
+      namePickerArea.classList.add("hidden");
+      document.getElementById("inviteUserName").textContent = freshUser.name;
+      document
+        .getElementById("inviteFirstTimeBadge")
+        .classList.toggle("hidden", freshUser.has_account);
+      document
+        .getElementById("inviteReturningText")
+        .classList.toggle("hidden", !freshUser.has_account);
+      updateLoginFormPrompt(freshUser);
+      return;
+    }
+  }
+
+  inviteBanner.classList.add("hidden");
+  namePickerArea.classList.remove("hidden");
 
   adultsGrid.innerHTML = "";
   kidsGrid.innerHTML = "";
@@ -174,6 +237,11 @@ function renderLoginScreen() {
     kidsDivider.classList.add("hidden");
     kidsGrid.classList.add("hidden");
   }
+
+  if (selectedLoginUserId) {
+    const sel = appState.participants.find((p) => p.id === selectedLoginUserId);
+    if (sel) updateLoginFormPrompt(sel);
+  }
 }
 
 // --- Logged-In User Dashboard ---
@@ -189,18 +257,6 @@ function renderUserDashboard() {
     wlInput.value = user.wishlist || "";
   }
 
-  const adultSection = document.getElementById("adultLotterySection");
-  const kidSection = document.getElementById("kidWelcomeSection");
-
-  if (user.is_kid) {
-    adultSection.classList.add("hidden");
-    kidSection.classList.remove("hidden");
-    return;
-  }
-
-  adultSection.classList.remove("hidden");
-  kidSection.classList.add("hidden");
-
   const drawNotReadyBox = document.getElementById("drawNotReadyBox");
   const lotteryMachineBox = document.getElementById("lotteryMachineBox");
   const matchRevealedBox = document.getElementById("matchRevealedBox");
@@ -213,6 +269,19 @@ function renderUserDashboard() {
   }
 
   drawNotReadyBox.classList.add("hidden");
+
+  // Customize copy slightly for kids vs adults
+  if (user.is_kid) {
+    document.getElementById("lotteryHeading").textContent = "Vill du vara med och ge en bonusklapp?";
+    document.getElementById("lotterySubtext").textContent =
+      "Om du också vill vara med i det hemliga julklappsspelet kan du dra en egen lott här!";
+    document.getElementById("revealOverline").textContent = "Din hemliga bonusklapp går till:";
+  } else {
+    document.getElementById("lotteryHeading").textContent = "Dra din julklappslott!";
+    document.getElementById("lotterySubtext").textContent =
+      "Tryck på knappen för att dra vem du ska köpa julklapp till i år.";
+    document.getElementById("revealOverline").textContent = "Du ska köpa en julklapp till:";
+  }
 
   if (!user.has_drawn_lot) {
     lotteryMachineBox.classList.remove("hidden");
@@ -246,11 +315,8 @@ async function runLotteryWheelAnimation(finalName) {
   spinBtn.disabled = true;
   slotWindow.classList.add("spinning");
 
-  const adultNames = appState.participants
-    .filter((p) => !p.is_kid)
-    .map((p) => p.name);
-
-  const pool = adultNames.length > 0 ? adultNames : [finalName];
+  const names = appState.participants.map((p) => p.name);
+  const pool = names.length > 0 ? names : [finalName];
   const totalSteps = 22;
   for (let i = 0; i < totalSteps; i++) {
     const candidate = pool[i % pool.length];
@@ -265,109 +331,27 @@ async function runLotteryWheelAnimation(finalName) {
   spinBtn.disabled = false;
 }
 
-// --- Tab 2: Barnen (Louise, Josefin & Elise) ---
+// --- Tab 2: Barnens önskelistor (Louise, Josefin & Elise) ---
 
-function renderKidsCorner() {
+function renderKidsWishlists() {
   const container = document.getElementById("kidsListContainer");
   container.innerHTML = "";
 
   const kids = appState.participants.filter((p) => p.is_kid);
   kids.forEach((kid) => {
-    const pledges = appState.kid_gifts.filter((g) => g.recipient_user_id === kid.id);
     const card = document.createElement("div");
     card.className = "kid-card";
-
-    let pledgesHtml = "";
-    if (pledges.length === 0) {
-      pledgesHtml = `<p class="muted" style="margin-top:0.55rem;">Ingen paxad klapp ännu.</p>`;
-    } else {
-      const items = pledges
-        .map((g) => {
-          const canDelete =
-            currentSession && currentSession.user.owner_tag === g.owner_tag;
-          const notePart = g.gift_note ? ` – <em>"${escapeHtml(g.gift_note)}"</em>` : "";
-          const delBtn = canDelete
-            ? `<button type="button" class="btn btn-danger" onclick="deleteKidGift(${g.id})">Ta bort</button>`
-            : "";
-          return `<li class="kid-pledge-item">
-            <span>🎁 Från <strong>${escapeHtml(g.giver_label)}</strong>${notePart}</span>
-            ${delBtn}
-          </li>`;
-        })
-        .join("");
-      pledgesHtml = `<ul class="kid-pledge-list">${items}</ul>`;
-    }
-
     card.innerHTML = `
       <h3>👶 ${escapeHtml(kid.name)}</h3>
-      <p class="muted" style="margin:0.2rem 0;"><strong>Önskelista:</strong> ${
-        kid.wishlist ? escapeHtml(kid.wishlist) : "Ingen önskelista inlagd än."
+      <p class="wishlist-content" style="margin:0.35rem 0 0;">${
+        kid.wishlist && kid.wishlist.trim()
+          ? escapeHtml(kid.wishlist)
+          : '<span class="muted">Har inte skrivit någon önskelista ännu.</span>'
       }</p>
-      ${pledgesHtml}
     `;
     container.appendChild(card);
   });
-
-  // Extra gifts to adults (e.g. if a kid signed up to give a gift to an adult)
-  const adultExtraGifts = appState.kid_gifts.filter((g) => {
-    const rec = appState.participants.find((p) => p.id === g.recipient_user_id);
-    return rec && !rec.is_kid;
-  });
-
-  if (adultExtraGifts.length > 0) {
-    const extraCard = document.createElement("div");
-    extraCard.className = "kid-card";
-    const items = adultExtraGifts
-      .map((g) => {
-        const canDelete =
-          currentSession && currentSession.user.owner_tag === g.owner_tag;
-        const notePart = g.gift_note ? ` – <em>"${escapeHtml(g.gift_note)}"</em>` : "";
-        const delBtn = canDelete
-          ? `<button type="button" class="btn btn-danger" onclick="deleteKidGift(${g.id})">Ta bort</button>`
-          : "";
-        return `<li class="kid-pledge-item">
-          <span>🎄 Till <strong>${escapeHtml(g.recipient_name)}</strong> från <strong>${escapeHtml(g.giver_label)}</strong>${notePart}</span>
-          ${delBtn}
-        </li>`;
-      })
-      .join("");
-    extraCard.innerHTML = `
-      <h3>🌟 Extra klappar</h3>
-      <ul class="kid-pledge-list">${items}</ul>
-    `;
-    container.appendChild(extraCard);
-  }
-
-  if (currentSession) {
-    const select = document.getElementById("kidGiftRecipient");
-    const prevVal = select.value;
-    select.innerHTML = "";
-    const sorted = [...appState.participants].sort((a, b) => Number(b.is_kid) - Number(a.is_kid));
-    sorted.forEach((p) => {
-      if (p.id === currentSession.user.id) return;
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = `${p.name} (${p.is_kid ? "Barn" : "Vuxen"})`;
-      select.appendChild(opt);
-    });
-    if (prevVal) select.value = prevVal;
-  }
 }
-
-window.deleteKidGift = async function (giftId) {
-  if (!currentSession) return;
-  try {
-    const q = new URLSearchParams({
-      user_id: currentSession.user.id,
-      password: currentSession.password,
-    });
-    await apiRequest(`/api/user/kid-gift/${giftId}?${q.toString()}`, "DELETE");
-    showToast("Paxningen togs bort.");
-    await loadState();
-  } catch (err) {
-    showToast(err.message, true);
-  }
-};
 
 // --- Tab 3: Kedjan ---
 
@@ -403,15 +387,27 @@ function renderChainVerification() {
   appState.alias_board.forEach((item) => {
     const card = document.createElement("div");
     card.className = `alias-card ${item.has_drawn ? "drawn" : ""}`;
+    const bonusBadge = item.is_kid_bonus ? " (Bonuslott)" : "";
     card.innerHTML = `
-      <strong>🎭 ${escapeHtml(item.alias_name)}</strong>
+      <strong>🎭 ${escapeHtml(item.alias_name)}${bonusBadge}</strong>
       <span class="tag">${item.has_drawn ? "✅ Dragit lott" : "⏳ Väntar"}</span>
     `;
     statusGrid.appendChild(card);
   });
 }
 
-// --- Tab 4: Admin Panel ---
+// --- Tab 4: Admin Panel & Personal Links ---
+
+async function loadAdminInvites() {
+  try {
+    const res = await apiRequest("/api/admin/invites", "POST", {
+      admin_password: getAdminPassword(),
+    });
+    adminInvitesCache = res.invites || [];
+  } catch (_) {
+    adminInvitesCache = [];
+  }
+}
 
 function renderAdminPanel() {
   const lockedBanner = document.getElementById("liveLockedBanner");
@@ -426,6 +422,32 @@ function renderAdminPanel() {
     lockedBanner.classList.add("hidden");
     editableArea.classList.remove("hidden");
     goLiveBtn.classList.remove("hidden");
+  }
+
+  // Personal Invite Links
+  const invitesEl = document.getElementById("adminInvitesList");
+  invitesEl.innerHTML = "";
+  if (adminInvitesCache.length === 0) {
+    invitesEl.innerHTML = `<span class="muted">Ange rätt admin-lösenord och klicka "Ladda" för att se de personliga länkarna.</span>`;
+  } else {
+    adminInvitesCache.forEach((inv) => {
+      const url = buildPersonalLink(inv.invite_token);
+      const statusBadge = inv.has_account
+        ? `<span class="tag" style="background:rgba(69,184,119,0.2);color:#7ef0ae;">🔒 PIN vald</span>`
+        : `<span class="tag">⏳ Ej öppnad än</span>`;
+      const row = document.createElement("div");
+      row.className = "admin-item-row";
+      row.style.gridTemplateColumns = "1fr auto 1.8fr auto";
+      row.innerHTML = `
+        <strong>${escapeHtml(inv.name)} ${inv.is_kid ? "👶" : "🎅"}</strong>
+        ${statusBadge}
+        <input type="text" readonly value="${escapeHtml(url)}" onclick="this.select()" />
+        <button type="button" class="btn btn-outline btn-sm" onclick="copySingleLink('${escapeHtml(inv.name)}', '${escapeHtml(inv.invite_token)}')">
+          📋 Kopiera
+        </button>
+      `;
+      invitesEl.appendChild(row);
+    });
   }
 
   const listEl = document.getElementById("adminParticipantsList");
@@ -487,7 +509,7 @@ function renderAdminPanel() {
       .map(
         (step) => `
         <tr>
-          <td><strong>${escapeHtml(step.giver_name)}</strong> (${escapeHtml(step.giver_alias)})</td>
+          <td><strong>${escapeHtml(step.giver_name)}</strong> (${escapeHtml(step.giver_alias)})${step.is_kid_bonus ? " 👶 Bonus" : ""}</td>
           <td>➔</td>
           <td><strong>${escapeHtml(step.target_name)}</strong></td>
         </tr>
@@ -504,6 +526,12 @@ function renderAdminPanel() {
     devTableContainer.innerHTML = "";
   }
 }
+
+window.copySingleLink = async function (name, token) {
+  const url = buildPersonalLink(token);
+  await navigator.clipboard.writeText(url);
+  showToast(`Kopierade länk för ${name}! 📋`);
+};
 
 window.saveParticipant = async function (userId) {
   try {
@@ -547,10 +575,22 @@ window.removeExclusion = async function (exclId) {
 
 // --- Event Listeners ---
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   initSnowflakes();
   initTabs();
-  loadState();
+  await checkInviteUrlToken();
+  await loadState();
+
+  // Switch back from personal link view to all users list if desired
+  document.getElementById("showAllUsersBtn").addEventListener("click", () => {
+    currentInviteInfo = null;
+    currentInviteToken = null;
+    selectedLoginUserId = null;
+    window.history.replaceState({}, "", "/");
+    document.getElementById("loginForm").classList.add("hidden");
+    document.getElementById("needInviteNotice").classList.add("hidden");
+    renderLoginScreen();
+  });
 
   // Login Form
   document.getElementById("loginForm").addEventListener("submit", async (e) => {
@@ -561,6 +601,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await apiRequest("/api/auth/login", "POST", {
         user_id: selectedLoginUserId,
         password,
+        invite_token: currentInviteToken,
       });
       currentSession = {
         user: res.user,
@@ -579,15 +620,21 @@ document.addEventListener("DOMContentLoaded", () => {
   // Logout
   document.getElementById("logoutBtn").addEventListener("click", () => {
     currentSession = null;
-    selectedLoginUserId = null;
+    if (!currentInviteInfo) {
+      selectedLoginUserId = null;
+    }
     adminViewOpen = false;
     document.getElementById("loginForm").classList.add("hidden");
     loadState();
   });
 
   // Discreet Admin Button in Footer
-  document.getElementById("openAdminFooterBtn").addEventListener("click", () => {
+  document.getElementById("openAdminFooterBtn").addEventListener("click", async () => {
     adminViewOpen = !adminViewOpen;
+    if (adminViewOpen) {
+      await loadAdminInvites();
+      renderAdminPanel();
+    }
     renderLayoutVisibility();
     if (adminViewOpen) {
       switchTab("tab-admin");
@@ -596,13 +643,35 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Spin Lottery Wheel
+  document.getElementById("unlockAdminBtn").addEventListener("click", async () => {
+    await loadAdminInvites();
+    renderAdminPanel();
+    showToast("Admin-länkar uppdaterade!");
+  });
+
+  document.getElementById("copyAllLinksBtn").addEventListener("click", async () => {
+    if (adminInvitesCache.length === 0) {
+      await loadAdminInvites();
+    }
+    if (adminInvitesCache.length === 0) {
+      showToast("Kunde inte hämta länkar – kontrollera admin-lösenordet.", true);
+      return;
+    }
+    const lines = adminInvitesCache.map(
+      (inv) => `${inv.name}: ${buildPersonalLink(inv.invite_token)}`
+    );
+    await navigator.clipboard.writeText(lines.join("\n"));
+    showToast("Alla personliga länkar kopierades! 📋");
+  });
+
+  // Spin Lottery Wheel (Both Adults and Kids!)
   document.getElementById("spinLotteryBtn").addEventListener("click", async () => {
     if (!currentSession) return;
     try {
       const res = await apiRequest("/api/user/draw-lot", "POST", {
         user_id: currentSession.user.id,
         password: currentSession.password,
+        invite_token: currentInviteToken,
       });
       await runLotteryWheelAnimation(res.assignment.target_name);
       currentSession.user = res.user;
@@ -611,16 +680,6 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       showToast(err.message, true);
     }
-  });
-
-  // Replay Spin Animation
-  document.getElementById("replaySpinBtn").addEventListener("click", async () => {
-    if (!currentSession || !currentSession.assignment) return;
-    document.getElementById("matchRevealedBox").classList.add("hidden");
-    document.getElementById("lotteryMachineBox").classList.remove("hidden");
-    await runLotteryWheelAnimation(currentSession.assignment.target_name);
-    document.getElementById("lotteryMachineBox").classList.add("hidden");
-    document.getElementById("matchRevealedBox").classList.remove("hidden");
   });
 
   // Save Wishlist
@@ -637,29 +696,6 @@ document.addEventListener("DOMContentLoaded", () => {
       currentSession.user.wishlist = res.wishlist;
       await loadState();
       showToast("Önskelistan är sparad! ✨");
-    } catch (err) {
-      showToast(err.message, true);
-    }
-  });
-
-  // Add Kid Gift Pledge
-  document.getElementById("kidGiftForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!currentSession) return;
-    const recipient_user_id = Number(document.getElementById("kidGiftRecipient").value);
-    const giver_mode = document.getElementById("kidGiftMode").value;
-    const gift_note = document.getElementById("kidGiftNote").value;
-    try {
-      await apiRequest("/api/user/kid-gift", "POST", {
-        user_id: currentSession.user.id,
-        password: currentSession.password,
-        recipient_user_id,
-        giver_mode,
-        gift_note,
-      });
-      document.getElementById("kidGiftNote").value = "";
-      await loadState();
-      showToast("Sparat! 🎁");
     } catch (err) {
       showToast(err.message, true);
     }

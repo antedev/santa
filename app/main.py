@@ -1,3 +1,4 @@
+import hashlib
 import json
 import random
 from contextlib import asynccontextmanager
@@ -21,11 +22,11 @@ from app.crypto import (
 )
 from app.database import (
     export_current_to_seed_dict,
+    generate_invite_token,
     get_connection,
     get_setting,
     init_db,
     load_seed_into_db,
-    make_owner_tag,
     set_setting,
 )
 from app.matcher import MatchingError, assign_aliases, find_single_cycle
@@ -90,25 +91,13 @@ class GenerateDrawRequest(AdminAuthMixin):
 class LoginRequest(BaseModel):
     user_id: int
     password: str
+    invite_token: Optional[str] = None
 
 
 class WishlistUpdateRequest(BaseModel):
     user_id: int
     password: str
     wishlist: str
-
-
-class KidGiftCreateRequest(BaseModel):
-    user_id: int
-    password: str
-    recipient_user_id: int
-    giver_mode: str = "secret"  # "secret" | "alias" | "name"
-    gift_note: str = ""
-
-
-class KidGiftDeleteRequest(BaseModel):
-    user_id: int
-    password: str
 
 
 # --- Helper functions ---
@@ -131,11 +120,15 @@ def _perform_draw_generation(
     seed: Optional[str] = None,
     custom_cycle_user_ids: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
-    adults = conn.execute(
-        "SELECT id, name FROM users WHERE is_kid = 0 ORDER BY id ASC"
+    all_users = conn.execute(
+        "SELECT id, name, is_kid FROM users ORDER BY id ASC"
     ).fetchall()
+    adults = [r for r in all_users if not r["is_kid"]]
+    kids = [r for r in all_users if r["is_kid"]]
+
     adult_ids = [r["id"] for r in adults]
-    id_to_name = {r["id"]: r["name"] for r in adults}
+    all_ids = [r["id"] for r in all_users]
+    id_to_name = {r["id"]: r["name"] for r in all_users}
 
     exclusions_rows = conn.execute("SELECT user_a_id, user_b_id FROM exclusions").fetchall()
     excluded_pairs: List[Tuple[int, int]] = [
@@ -164,26 +157,24 @@ def _perform_draw_generation(
         cycle_ids = find_single_cycle(adult_ids, excluded_pairs, seed=seed)
 
     aliases_pool = json.loads(get_setting(conn, "alias_pool_json", "[]"))
-    user_aliases = assign_aliases(cycle_ids, aliases_pool, seed=seed)
+    user_aliases = assign_aliases(all_ids, aliases_pool, seed=seed)
 
     # Rotate server_salt so preclaim keys are fresh
     server_salt = generate_salt()
     set_setting(conn, "server_salt", server_salt)
 
     # Reset passwords and draw status so pre-claim encryption is consistent
-    for uid in adult_ids:
+    for uid in all_ids:
         conn.execute(
             "UPDATE users SET password_hash = NULL, password_salt = ?, is_password_encrypted = 0, has_drawn_lot = 0 WHERE id = ?",
             (generate_salt(), uid),
         )
-    conn.execute(
-        "UPDATE users SET password_hash = NULL, is_password_encrypted = 0, has_drawn_lot = 0, encrypted_assignment = NULL WHERE is_kid = 1"
-    )
 
     n = len(cycle_ids)
     alias_cycle: List[str] = []
     dev_debug_cycle: List[Dict[str, Any]] = []
 
+    # 1. Encrypt adult main loop assignments
     for i in range(n):
         giver_id = cycle_ids[i]
         target_id = cycle_ids[(i + 1) % n]
@@ -216,16 +207,63 @@ def _perform_draw_generation(
                 "target_id": target_id,
                 "target_name": id_to_name[target_id],
                 "target_alias": target_alias,
+                "is_kid_bonus": False,
             }
         )
 
-    # Populate alias_board in shuffled order so row order doesn't match cycle order
+    # 2. Encrypt optional bonus lottery assignments for kids (outside the main loop!)
+    rng = random.Random()
+    if seed is not None and str(seed).strip() != "":
+        seed_bytes = hashlib.sha256(("kids:" + str(seed).strip()).encode("utf-8")).digest()
+        rng.seed(int.from_bytes(seed_bytes, "big"))
+    else:
+        rng.seed()
+
+    for kid in kids:
+        kid_id = kid["id"]
+        possible_targets = [uid for uid in all_ids if uid != kid_id]
+        if not possible_targets:
+            continue
+        target_id = rng.choice(possible_targets)
+        kid_alias = user_aliases[kid_id]
+        target_alias = user_aliases[target_id]
+
+        user_row = conn.execute(
+            "SELECT password_salt FROM users WHERE id = ?", (kid_id,)
+        ).fetchone()
+        payload = {
+            "target_id": target_id,
+            "target_name": id_to_name[target_id],
+            "my_alias": kid_alias,
+            "target_alias": target_alias,
+        }
+        ciphertext = encrypt_preclaim_assignment(
+            payload, server_salt, kid_id, user_row["password_salt"]
+        )
+        conn.execute(
+            "UPDATE users SET encrypted_assignment = ?, is_password_encrypted = 0, has_drawn_lot = 0 WHERE id = ?",
+            (ciphertext, kid_id),
+        )
+
+        dev_debug_cycle.append(
+            {
+                "giver_id": kid_id,
+                "giver_name": id_to_name[kid_id],
+                "giver_alias": kid_alias,
+                "target_id": target_id,
+                "target_name": id_to_name[target_id],
+                "target_alias": target_alias,
+                "is_kid_bonus": True,
+            }
+        )
+
+    # Populate alias_board for the adult main loop in shuffled order
     conn.execute("DELETE FROM alias_board")
     shuffled_aliases = list(alias_cycle)
     random.shuffle(shuffled_aliases)
     for alias in shuffled_aliases:
         conn.execute(
-            "INSERT INTO alias_board (alias_name, has_drawn) VALUES (?, 0)",
+            "INSERT INTO alias_board (alias_name, has_drawn, is_kid_bonus) VALUES (?, 0, 0)",
             (alias,),
         )
 
@@ -244,7 +282,7 @@ def _perform_draw_generation(
     }
 
 
-def _authenticate_user(conn, user_id: int, password: str):
+def _authenticate_user(conn, user_id: int, password: str, invite_token: Optional[str] = None):
     password_clean = password.strip()
     if len(password_clean) < 2:
         raise HTTPException(status_code=400, detail="Lösenordet/PIN-koden måste vara minst 2 tecken.")
@@ -256,7 +294,12 @@ def _authenticate_user(conn, user_id: int, password: str):
     server_salt = get_setting(conn, "server_salt")
 
     if user["password_hash"] is None:
-        # First-time registration: set user's password and re-encrypt their pre-generated assignment
+        # First-time registration: MUST provide the user's unique invite_token so no one else can claim the account!
+        if not invite_token or invite_token.strip() != user["invite_token"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Första gången du loggar in måste du öppna din personliga länk! Det garanterar att ingen annan kan logga in på ditt konto.",
+            )
         pw_hash = hash_password(password_clean, user["password_salt"])
         if user["encrypted_assignment"] and not user["is_password_encrypted"]:
             plain_payload = decrypt_preclaim_assignment(
@@ -279,7 +322,6 @@ def _authenticate_user(conn, user_id: int, password: str):
     else:
         if not verify_password(password_clean, user["password_salt"], user["password_hash"]):
             raise HTTPException(status_code=401, detail="Fel lösenord eller PIN-kod! Försök igen.")
-        # Upgrade preclaim encryption if draw was generated after password was set
         if user["encrypted_assignment"] and not user["is_password_encrypted"]:
             plain_payload = decrypt_preclaim_assignment(
                 user["encrypted_assignment"],
@@ -299,7 +341,7 @@ def _authenticate_user(conn, user_id: int, password: str):
 
 def _build_user_session_response(conn, user, password_clean: str) -> Dict[str, Any]:
     assignment = None
-    if not user["is_kid"] and user["encrypted_assignment"]:
+    if user["encrypted_assignment"]:
         decrypted = decrypt_payload(
             user["encrypted_assignment"], password_clean, user["password_salt"]
         )
@@ -315,7 +357,6 @@ def _build_user_session_response(conn, user, password_clean: str) -> Dict[str, A
             "target_alias": decrypted["target_alias"],
         }
 
-    server_salt = get_setting(conn, "server_salt")
     return {
         "user": {
             "id": user["id"],
@@ -323,7 +364,6 @@ def _build_user_session_response(conn, user, password_clean: str) -> Dict[str, A
             "is_kid": bool(user["is_kid"]),
             "wishlist": user["wishlist"],
             "has_drawn_lot": bool(user["has_drawn_lot"]),
-            "owner_tag": make_owner_tag(server_salt, user["id"]),
         },
         "assignment": assignment,
     }
@@ -334,6 +374,27 @@ def _build_user_session_response(conn, user, password_clean: str) -> Dict[str, A
 @app.get("/")
 def serve_index():
     return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@app.get("/api/invite/{invite_token}")
+def get_invite_info(invite_token: str):
+    conn = get_connection()
+    try:
+        user = conn.execute(
+            "SELECT id, name, is_kid, password_hash IS NOT NULL AS has_account FROM users WHERE invite_token = ?",
+            (invite_token.strip(),),
+        ).fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="Ogiltig eller utgången personlig länk.")
+        return {
+            "id": user["id"],
+            "name": user["name"],
+            "is_kid": bool(user["is_kid"]),
+            "has_account": bool(user["has_account"]),
+            "invite_token": invite_token.strip(),
+        }
+    finally:
+        conn.close()
 
 
 @app.get("/api/state")
@@ -361,26 +422,15 @@ def get_state():
         ]
 
         alias_board_rows = conn.execute(
-            "SELECT alias_name, has_drawn FROM alias_board ORDER BY alias_name COLLATE NOCASE ASC"
+            "SELECT alias_name, has_drawn, is_kid_bonus FROM alias_board ORDER BY is_kid_bonus ASC, alias_name COLLATE NOCASE ASC"
         ).fetchall()
         alias_board = [
-            {"alias_name": r["alias_name"], "has_drawn": bool(r["has_drawn"])}
-            for r in alias_board_rows
-        ]
-
-        kid_gifts_rows = conn.execute(
-            "SELECT id, recipient_user_id, giver_label, gift_note, owner_tag FROM kid_gifts ORDER BY id ASC"
-        ).fetchall()
-        kid_gifts = [
             {
-                "id": r["id"],
-                "recipient_user_id": r["recipient_user_id"],
-                "recipient_name": id_to_name.get(r["recipient_user_id"], "?"),
-                "giver_label": r["giver_label"],
-                "gift_note": r["gift_note"],
-                "owner_tag": r["owner_tag"],
+                "alias_name": r["alias_name"],
+                "has_drawn": bool(r["has_drawn"]),
+                "is_kid_bonus": bool(r["is_kid_bonus"]),
             }
-            for r in kid_gifts_rows
+            for r in alias_board_rows
         ]
 
         is_live = get_setting(conn, "is_live", "0") == "1"
@@ -395,8 +445,8 @@ def get_state():
             dev_debug_cycle = json.loads(get_setting(conn, "dev_debug_cycle_json", "[]"))
 
         return {
-            "event_title": get_setting(conn, "event_title", "Julklappsspelet – Secret Santa"),
-            "budget_info": get_setting(conn, "budget_info", "Ca 300 kr per julklapp"),
+            "event_title": get_setting(conn, "event_title", "Julklappsspelet"),
+            "budget_info": get_setting(conn, "budget_info", "Secret Santa för familjen"),
             "draw_generated": get_setting(conn, "draw_generated", "0") == "1",
             "is_live": is_live,
             "dev_mode_enabled": dev_mode_enabled,
@@ -414,7 +464,6 @@ def get_state():
             "aliases_pool": json.loads(get_setting(conn, "alias_pool_json", "[]")),
             "alias_cycle": json.loads(get_setting(conn, "alias_cycle_json", "[]")),
             "alias_board": alias_board,
-            "kid_gifts": kid_gifts,
             "dev_debug_cycle": dev_debug_cycle,
         }
     finally:
@@ -426,7 +475,9 @@ def login_user(req: LoginRequest):
     conn = get_connection()
     try:
         with conn:
-            user, password_clean = _authenticate_user(conn, req.user_id, req.password)
+            user, password_clean = _authenticate_user(
+                conn, req.user_id, req.password, req.invite_token
+            )
             return _build_user_session_response(conn, user, password_clean)
     finally:
         conn.close()
@@ -440,24 +491,29 @@ def user_draw_lot(req: LoginRequest):
             if get_setting(conn, "draw_generated", "0") != "1":
                 raise HTTPException(
                     status_code=400,
-                    detail="Lottningen är inte förberedd ännu! Be tomten/admin att aktivera lottningen först.",
+                    detail="Lottningen är inte förberedd ännu!",
                 )
-            user, password_clean = _authenticate_user(conn, req.user_id, req.password)
-            if user["is_kid"]:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Barnen är med i Barnens Julklappshörna och behöver inte dra en vuxenlott.",
-                )
+            user, password_clean = _authenticate_user(
+                conn, req.user_id, req.password, req.invite_token
+            )
             session_data = _build_user_session_response(conn, user, password_clean)
             if not session_data["assignment"]:
                 raise HTTPException(status_code=400, detail="Ingen lott hittades för denna deltagare.")
 
             my_alias = session_data["assignment"]["my_alias"]
             conn.execute("UPDATE users SET has_drawn_lot = 1 WHERE id = ?", (user["id"],))
-            conn.execute(
-                "UPDATE alias_board SET has_drawn = 1 WHERE alias_name = ?",
-                (my_alias,),
-            )
+            if user["is_kid"]:
+                # Add kid's bonus alias to alias_board once they actually choose to draw!
+                conn.execute(
+                    "INSERT INTO alias_board (alias_name, has_drawn, is_kid_bonus) VALUES (?, 1, 1) "
+                    "ON CONFLICT(alias_name) DO UPDATE SET has_drawn = 1",
+                    (my_alias,),
+                )
+            else:
+                conn.execute(
+                    "UPDATE alias_board SET has_drawn = 1 WHERE alias_name = ?",
+                    (my_alias,),
+                )
             session_data["user"]["has_drawn_lot"] = True
             return session_data
     finally:
@@ -479,75 +535,29 @@ def update_wishlist(req: WishlistUpdateRequest):
         conn.close()
 
 
-@app.post("/api/user/kid-gift")
-def create_kid_gift(req: KidGiftCreateRequest):
-    conn = get_connection()
-    try:
-        with conn:
-            user, password_clean = _authenticate_user(conn, req.user_id, req.password)
-            recipient = conn.execute(
-                "SELECT id, name, is_kid FROM users WHERE id = ?",
-                (req.recipient_user_id,),
-            ).fetchone()
-            if not recipient:
-                raise HTTPException(status_code=404, detail="Mottagaren hittades inte.")
+# --- Admin Endpoints ---
 
-            # Determine giver label without leaking identity unless chosen
-            giver_label = "En hemlig tomte 🎅"
-            if req.giver_mode == "name":
-                giver_label = user["name"]
-            elif req.giver_mode == "alias" and not user["is_kid"] and user["encrypted_assignment"]:
-                decrypted = decrypt_payload(
-                    user["encrypted_assignment"], password_clean, user["password_salt"]
-                )
-                giver_label = f"{decrypted['my_alias']} 🦌"
-
-            server_salt = get_setting(conn, "server_salt")
-            owner_tag = make_owner_tag(server_salt, user["id"])
-            conn.execute(
-                "INSERT INTO kid_gifts (recipient_user_id, giver_label, gift_note, owner_tag) VALUES (?, ?, ?, ?)",
-                (recipient["id"], giver_label, req.gift_note.strip(), owner_tag),
-            )
-            return {"ok": True}
-    finally:
-        conn.close()
-
-
-@app.delete("/api/user/kid-gift/{gift_id}")
-def delete_kid_gift(gift_id: int, user_id: int, password: str):
-    conn = get_connection()
-    try:
-        with conn:
-            user, _ = _authenticate_user(conn, user_id, password)
-            server_salt = get_setting(conn, "server_salt")
-            owner_tag = make_owner_tag(server_salt, user["id"])
-            row = conn.execute(
-                "SELECT owner_tag FROM kid_gifts WHERE id = ?", (gift_id,)
-            ).fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail="Klapp-paxningen hittades inte.")
-            if row["owner_tag"] != owner_tag:
-                raise HTTPException(status_code=403, detail="Du kan bara ta bort dina egna paxade klappar.")
-            conn.execute("DELETE FROM kid_gifts WHERE id = ?", (gift_id,))
-            return {"ok": True}
-    finally:
-        conn.close()
-
-
-# --- Admin / Pre-Live Seeding Endpoints ---
-
-@app.post("/api/admin/settings")
-def admin_update_settings(req: UpdateSettingsRequest):
+@app.post("/api/admin/invites")
+def admin_get_invites(req: AdminAuthMixin):
     _check_admin(req.admin_password)
     conn = get_connection()
     try:
-        with conn:
-            _ensure_not_live(conn)
-            set_setting(conn, "event_title", req.event_title.strip() or "Julklappsspelet – Secret Santa")
-            set_setting(conn, "budget_info", req.budget_info.strip())
-            cleaned_aliases = [a.strip() for a in req.aliases if a.strip()]
-            set_setting(conn, "alias_pool_json", json.dumps(cleaned_aliases, ensure_ascii=False))
-            return {"ok": True}
+        rows = conn.execute(
+            "SELECT id, name, is_kid, invite_token, password_hash IS NOT NULL AS has_account "
+            "FROM users ORDER BY is_kid ASC, name COLLATE NOCASE ASC"
+        ).fetchall()
+        return {
+            "invites": [
+                {
+                    "id": r["id"],
+                    "name": r["name"],
+                    "is_kid": bool(r["is_kid"]),
+                    "invite_token": r["invite_token"],
+                    "has_account": bool(r["has_account"]),
+                }
+                for r in rows
+            ]
+        }
     finally:
         conn.close()
 
@@ -566,10 +576,10 @@ def admin_add_participant(req: ParticipantCreateRequest):
             if exists:
                 raise HTTPException(status_code=400, detail="Det finns redan en deltagare med det namnet.")
             conn.execute(
-                "INSERT INTO users (name, is_kid, wishlist, password_salt) VALUES (?, ?, ?, ?)",
-                (name, 1 if req.is_kid else 0, req.wishlist.strip(), generate_salt()),
+                "INSERT INTO users (name, is_kid, wishlist, invite_token, password_salt) VALUES (?, ?, ?, ?, ?)",
+                (name, 1 if req.is_kid else 0, req.wishlist.strip(), generate_invite_token(), generate_salt()),
             )
-            set_setting(conn, "draw_generated", "0")
+            _perform_draw_generation(conn)
             return {"ok": True}
     finally:
         conn.close()
@@ -594,7 +604,7 @@ def admin_update_participant(user_id: int, req: ParticipantUpdateRequest):
                 "UPDATE users SET name = ?, is_kid = ?, wishlist = ? WHERE id = ?",
                 (name, 1 if req.is_kid else 0, req.wishlist.strip(), user_id),
             )
-            set_setting(conn, "draw_generated", "0")
+            _perform_draw_generation(conn)
             return {"ok": True}
     finally:
         conn.close()
@@ -608,7 +618,10 @@ def admin_delete_participant(user_id: int, admin_password: str = ""):
         with conn:
             _ensure_not_live(conn)
             conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
-            set_setting(conn, "draw_generated", "0")
+            try:
+                _perform_draw_generation(conn)
+            except MatchingError:
+                set_setting(conn, "draw_generated", "0")
             return {"ok": True}
     finally:
         conn.close()
@@ -633,7 +646,7 @@ def admin_add_exclusion(req: ExclusionCreateRequest):
                     "INSERT INTO exclusions (user_a_id, user_b_id) VALUES (?, ?)",
                     (u1, u2),
                 )
-            set_setting(conn, "draw_generated", "0")
+            _perform_draw_generation(conn)
             return {"ok": True}
     finally:
         conn.close()
@@ -647,7 +660,7 @@ def admin_delete_exclusion(excl_id: int, admin_password: str = ""):
         with conn:
             _ensure_not_live(conn)
             conn.execute("DELETE FROM exclusions WHERE id = ?", (excl_id,))
-            set_setting(conn, "draw_generated", "0")
+            _perform_draw_generation(conn)
             return {"ok": True}
     finally:
         conn.close()
@@ -684,7 +697,6 @@ def admin_go_live(req: AdminAuthMixin):
                     _perform_draw_generation(conn)
                 except MatchingError as exc:
                     raise HTTPException(status_code=400, detail=str(exc)) from exc
-            # Wipe any developer debug mapping so admin cannot inspect who has who!
             set_setting(conn, "dev_debug_cycle_json", "[]")
             set_setting(conn, "dev_mode_enabled", "0")
             set_setting(conn, "is_live", "1")

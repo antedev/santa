@@ -1,5 +1,5 @@
-import hashlib
 import json
+import secrets
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -30,6 +30,10 @@ def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
     )
 
 
+def generate_invite_token() -> str:
+    return secrets.token_urlsafe(12)
+
+
 def init_db(db_path: Optional[Path] = None, seed_path: Optional[Path] = None) -> None:
     conn = get_connection(db_path)
     with conn:
@@ -45,6 +49,7 @@ def init_db(db_path: Optional[Path] = None, seed_path: Optional[Path] = None) ->
                 name TEXT UNIQUE NOT NULL COLLATE NOCASE,
                 is_kid INTEGER NOT NULL DEFAULT 0,
                 wishlist TEXT NOT NULL DEFAULT '',
+                invite_token TEXT UNIQUE NOT NULL,
                 password_salt TEXT NOT NULL,
                 password_hash TEXT DEFAULT NULL,
                 encrypted_assignment TEXT DEFAULT NULL,
@@ -62,19 +67,25 @@ def init_db(db_path: Optional[Path] = None, seed_path: Optional[Path] = None) ->
 
             CREATE TABLE IF NOT EXISTS alias_board (
                 alias_name TEXT PRIMARY KEY,
-                has_drawn INTEGER NOT NULL DEFAULT 0
-            );
-
-            CREATE TABLE IF NOT EXISTS kid_gifts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                recipient_user_id INTEGER NOT NULL,
-                giver_label TEXT NOT NULL,
-                gift_note TEXT NOT NULL DEFAULT '',
-                owner_tag TEXT NOT NULL,
-                FOREIGN KEY(recipient_user_id) REFERENCES users(id) ON DELETE CASCADE
+                has_drawn INTEGER NOT NULL DEFAULT 0,
+                is_kid_bonus INTEGER NOT NULL DEFAULT 0
             );
             """
         )
+
+        # Ensure migration if older table existed without invite_token or is_kid_bonus
+        user_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+        if "invite_token" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN invite_token TEXT")
+            for row in conn.execute("SELECT id FROM users").fetchall():
+                conn.execute(
+                    "UPDATE users SET invite_token = ? WHERE id = ?",
+                    (generate_invite_token(), row["id"]),
+                )
+
+        alias_cols = [r["name"] for r in conn.execute("PRAGMA table_info(alias_board)").fetchall()]
+        if "is_kid_bonus" not in alias_cols:
+            conn.execute("ALTER TABLE alias_board ADD COLUMN is_kid_bonus INTEGER NOT NULL DEFAULT 0")
 
         if not get_setting(conn, "server_salt"):
             set_setting(conn, "server_salt", generate_salt())
@@ -90,8 +101,8 @@ def load_seed_into_db(conn: sqlite3.Connection, seed_path: Path) -> None:
         data = json.loads(seed_path.read_text(encoding="utf-8"))
     else:
         data = {
-            "event_title": "Julklappsspelet – Secret Santa",
-            "budget_info": "Ca 300 kr per julklapp",
+            "event_title": "Julklappsspelet",
+            "budget_info": "Secret Santa för familjen",
             "participants": [],
             "exclusions": [],
             "aliases": [
@@ -103,16 +114,17 @@ def load_seed_into_db(conn: sqlite3.Connection, seed_path: Path) -> None:
                 "Snöflingeprinsen",
                 "Polkagrisräven",
                 "Julmustbaronen",
+                "Saffransdraken",
+                "Kanelbullespion",
             ],
         }
 
-    conn.execute("DELETE FROM kid_gifts")
     conn.execute("DELETE FROM alias_board")
     conn.execute("DELETE FROM exclusions")
     conn.execute("DELETE FROM users")
 
-    set_setting(conn, "event_title", data.get("event_title", "Julklappsspelet – Secret Santa"))
-    set_setting(conn, "budget_info", data.get("budget_info", "Ca 300 kr per julklapp"))
+    set_setting(conn, "event_title", data.get("event_title", "Julklappsspelet"))
+    set_setting(conn, "budget_info", data.get("budget_info", "Secret Santa för familjen"))
     set_setting(conn, "draw_generated", "0")
     set_setting(conn, "is_live", "0")
     set_setting(conn, "dev_mode_enabled", "1" if DEV_MODE_ENV else "0")
@@ -129,8 +141,8 @@ def load_seed_into_db(conn: sqlite3.Connection, seed_path: Path) -> None:
         is_kid = 1 if p.get("is_kid", False) else 0
         wishlist = p.get("wishlist", "").strip()
         cur = conn.execute(
-            "INSERT INTO users (name, is_kid, wishlist, password_salt) VALUES (?, ?, ?, ?)",
-            (name, is_kid, wishlist, generate_salt()),
+            "INSERT INTO users (name, is_kid, wishlist, invite_token, password_salt) VALUES (?, ?, ?, ?, ?)",
+            (name, is_kid, wishlist, generate_invite_token(), generate_salt()),
         )
         name_to_id[name.lower()] = cur.lastrowid
 
@@ -164,8 +176,8 @@ def export_current_to_seed_dict(conn: sqlite3.Connection) -> Dict[str, Any]:
 
     aliases = json.loads(get_setting(conn, "alias_pool_json", "[]"))
     return {
-        "event_title": get_setting(conn, "event_title", "Julklappsspelet – Secret Santa"),
-        "budget_info": get_setting(conn, "budget_info", "Ca 300 kr per julklapp"),
+        "event_title": get_setting(conn, "event_title", "Julklappsspelet"),
+        "budget_info": get_setting(conn, "budget_info", "Secret Santa för familjen"),
         "participants": [
             {
                 "name": u["name"],
@@ -177,7 +189,3 @@ def export_current_to_seed_dict(conn: sqlite3.Connection) -> Dict[str, Any]:
         "exclusions": exclusions,
         "aliases": aliases,
     }
-
-
-def make_owner_tag(server_salt: str, user_id: int) -> str:
-    return hashlib.sha256(f"kid-gift-owner:{server_salt}:{user_id}".encode("utf-8")).hexdigest()[:24]

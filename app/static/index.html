@@ -19,7 +19,7 @@
   <!-- Navigation tabs: ONLY shown after a user logs in (or when Admin view is opened) -->
   <nav id="mainNav" class="tabs hidden" role="tablist">
     <button class="tab-btn active" data-tab="tab-my-santa" role="tab">🎅 Min Julklapp</button>
-    <button class="tab-btn" data-tab="tab-kids" role="tab">👶 Barnen</button>
+    <button class="tab-btn" data-tab="tab-kids" role="tab">👶 Barnens önskelistor</button>
     <button class="tab-btn" data-tab="tab-chain" role="tab">🔗 Kedjan</button>
     <button id="adminTabBtn" class="tab-btn hidden" data-tab="tab-admin" role="tab">⚙️ Admin</button>
   </nav>
@@ -30,15 +30,42 @@
     <!-- LOGIN SCREEN (Only thing visible before logging in!) -->
     <section id="loginScreen">
       <div class="card login-card">
-        <h2 class="center-title">Vem är du?</h2>
-        <p class="muted center-text">Välj ditt namn för att logga in.</p>
-
-        <div class="participant-grid" id="loginUserGrid"></div>
-
-        <div id="kidsLoginDivider" class="kids-divider">
-          <span>Barnen</span>
+        <!-- Personal Link Banner (Shown when opened via ?u=TOKEN) -->
+        <div id="inviteBanner" class="hidden">
+          <h2 class="center-title">Hej <span id="inviteUserName"></span>! 👋</h2>
+          <div id="inviteFirstTimeBadge" class="alert alert-locked" style="margin-bottom: 1rem;">
+            <strong>🔒 Personlig länk verifierad!</strong>
+            <p style="margin:0.25rem 0 0; font-size:0.9rem;">
+              Ingen har varit inne på ditt konto före dig. Välj en egen PIN-kod nedan för att låsa ditt konto!
+            </p>
+          </div>
+          <p id="inviteReturningText" class="muted center-text hidden">
+            Ditt konto är skyddat med din PIN-kod. Logga in nedan.
+          </p>
+          <div style="text-align:center; margin-bottom:0.5rem;">
+            <button type="button" id="showAllUsersBtn" class="footer-link-btn">Inte du? Visa alla namn</button>
+          </div>
         </div>
-        <div class="participant-grid kids-login-grid" id="loginKidsGrid"></div>
+
+        <!-- Standard Name Picker (Shown when visiting root URL without ?u=TOKEN) -->
+        <div id="namePickerArea">
+          <h2 class="center-title">Vem är du?</h2>
+          <p class="muted center-text">Välj ditt namn eller öppna din personliga länk.</p>
+
+          <div class="participant-grid" id="loginUserGrid"></div>
+
+          <div id="kidsLoginDivider" class="kids-divider">
+            <span>Barnen</span>
+          </div>
+          <div class="participant-grid kids-login-grid" id="loginKidsGrid"></div>
+        </div>
+
+        <div id="needInviteNotice" class="alert hidden" style="background: rgba(240, 194, 101, 0.14); border: 1px solid var(--gold); margin-top: 1.2rem;">
+          <strong>🔑 Första inloggningen kräver din personliga länk</strong>
+          <p style="margin:0.3rem 0 0; font-size:0.9rem;">
+            För att du ska kunna vara 100 % säker på att ingen annan har loggat in som dig måste du klicka på din personliga inbjudningslänk första gången du väljer din PIN-kod.
+          </p>
+        </div>
 
         <form id="loginForm" class="login-form hidden">
           <label for="loginPassword" id="passwordPromptLabel">PIN-kod / lösenord:</label>
@@ -64,23 +91,22 @@
           <span class="muted">Inloggad som</span>
           <strong id="loggedInName" class="user-bar-name"></strong>
         </div>
-        <button id="logoutBtn" class="btn btn-outline btn-sm">Byt person / Logga ut</button>
+        <button id="logoutBtn" class="btn btn-outline btn-sm">Logga ut</button>
       </div>
 
       <!-- TAB 1: MIN JULKLAPP -->
       <section id="tab-my-santa" class="tab-panel active">
-        <!-- Adult Secret Santa Lottery / Match Section -->
-        <div id="adultLotterySection" class="card highlight-card">
+        <div id="lotterySection" class="card highlight-card">
           <div id="drawNotReadyBox" class="hidden center-box">
             <h3>⏳ Lottningen förbereds</h3>
             <p class="muted">Du kan skriva din önskelista här nedanför så länge!</p>
           </div>
 
-          <!-- Ready to spin the lottery wheel -->
+          <!-- Ready to spin the lottery wheel (Both Adults and Kids who want to join!) -->
           <div id="lotteryMachineBox" class="hidden center-box">
             <div class="santa-hat-icon">🎅✨</div>
-            <h2>Dra din julklappslott!</h2>
-            <p class="muted">
+            <h2 id="lotteryHeading">Dra din julklappslott!</h2>
+            <p id="lotterySubtext" class="muted">
               Tryck på knappen för att dra vem du ska köpa julklapp till i år.
             </p>
 
@@ -93,10 +119,10 @@
             </button>
           </div>
 
-          <!-- Match Revealed -->
+          <!-- Match Revealed (No replay button!) -->
           <div id="matchRevealedBox" class="hidden">
             <div class="gift-reveal-card">
-              <p class="reveal-overline">Du ska köpa en julklapp till:</p>
+              <p class="reveal-overline" id="revealOverline">Du ska köpa en julklapp till:</p>
               <h2 class="reveal-target-name" id="targetPersonName"></h2>
               <div class="target-wishlist-box">
                 <h4>📜 <span id="targetWishlistOwner"></span>s önskelista:</h4>
@@ -106,21 +132,10 @@
 
             <div class="alias-pill-row">
               <span class="alias-pill">
-                🎭 Ditt hemliga täcknamn i kedjan: <strong id="myAliasText"></strong>
+                🎭 Ditt hemliga täcknamn: <strong id="myAliasText"></strong>
               </span>
-              <button id="replaySpinBtn" class="btn btn-outline btn-sm">
-                🎰 Snurra igen
-              </button>
             </div>
           </div>
-        </div>
-
-        <!-- Kid Welcome Section -->
-        <div id="kidWelcomeSection" class="card highlight-card hidden">
-          <h2>🎄 Hej!</h2>
-          <p class="muted">
-            Skriv vad du önskar dig i julklapp här nedanför. Om du också vill ge en julklapp till någon kan du göra det under fliken <strong>👶 Barnen</strong>!
-          </p>
         </div>
 
         <!-- Personal Wishlist Editor -->
@@ -139,43 +154,14 @@
         </div>
       </section>
 
-      <!-- TAB 2: BARNEN (Louise, Josefin & Elise) -->
+      <!-- TAB 2: BARNENS ÖNSKELISTOR (Louise, Josefin & Elise) -->
       <section id="tab-kids" class="tab-panel">
         <div class="card">
-          <h2>👶 Barnens julklappar</h2>
+          <h2>👶 Barnens önskelistor</h2>
           <p class="muted">
-            Louise, Josefin och Elise är utanför vuxenlänken. Här kan du se deras önskelistor och markera om du köper eller vill ge en klapp.
+            Här kan du se vad Louise, Josefin och Elise önskar sig i julklapp.
           </p>
           <div id="kidsListContainer" class="kids-grid"></div>
-        </div>
-
-        <div class="card">
-          <h3>🎁 Lägg till att du ger en extra julklapp</h3>
-          <form id="kidGiftForm">
-            <div class="form-grid">
-              <div>
-                <label for="kidGiftRecipient">Till vem?</label>
-                <select id="kidGiftRecipient" required></select>
-              </div>
-              <div>
-                <label for="kidGiftMode">Visa mig som:</label>
-                <select id="kidGiftMode">
-                  <option value="secret">En hemlig tomte 🎅 (Anonymt)</option>
-                  <option value="alias">Mitt hemliga täcknamn 🦌</option>
-                  <option value="name">Mitt riktiga namn</option>
-                </select>
-              </div>
-            </div>
-            <label for="kidGiftNote">Kommentar (valfritt, t.ex. vad du har paxat):</label>
-            <div class="input-row">
-              <input
-                type="text"
-                id="kidGiftNote"
-                placeholder="T.ex. Jag fixar ett paket!"
-              />
-              <button type="submit" class="btn btn-primary">Spara 🎁</button>
-            </div>
-          </form>
         </div>
       </section>
 
@@ -184,7 +170,7 @@
         <div class="card">
           <h2>🔗 Hela julklappskedjan</h2>
           <p class="muted">
-            Här syns att alla 6 vuxna hänger ihop i en enda stor cirkel (ingen A ↔ B) med sina hemliga täcknamn, och hur många som har dragit sin lott.
+            Här syns att alla vuxna hänger ihop i en enda stor cirkel (ingen A ↔ B) med sina hemliga täcknamn, och vilka som har dragit sin lott.
           </p>
           <div id="chainVisualization" class="chain-box"></div>
           <div id="aliasStatusGrid" class="alias-status-grid"></div>
@@ -196,13 +182,32 @@
         <div class="card">
           <div class="admin-header-row">
             <div>
-              <h2>⚙️ Administratör &amp; Seed</h2>
-              <p class="muted">Hantera deltagare, undantag och lottning.</p>
+              <h2>⚙️ Administratör</h2>
+              <p class="muted">Personliga länkar, deltagare och lottning.</p>
             </div>
             <div class="admin-pw-box">
               <label for="adminPasswordInput">Admin-lösenord:</label>
-              <input type="password" id="adminPasswordInput" value="tomten" />
+              <div class="input-row">
+                <input type="password" id="adminPasswordInput" value="tomten" />
+                <button type="button" id="unlockAdminBtn" class="btn btn-outline btn-sm">Ladda</button>
+              </div>
             </div>
+          </div>
+
+          <!-- Personal Invite Links Section -->
+          <div class="admin-section">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+              <div>
+                <h3 style="margin-bottom:0.2rem;">🔗 Personliga inbjudningslänkar</h3>
+                <p class="muted" style="margin:0;">
+                  Skicka varje person deras unika länk. Länken krävs vid första inloggningen så att alla vet att ingen annan har varit inne på deras konto!
+                </p>
+              </div>
+              <button type="button" id="copyAllLinksBtn" class="btn btn-gold btn-sm">
+                📋 Kopiera alla länkar
+              </button>
+            </div>
+            <div id="adminInvitesList" class="admin-list" style="margin-top:0.85rem;"></div>
           </div>
 
           <div id="liveLockedBanner" class="alert alert-locked hidden">
