@@ -2,15 +2,15 @@
   "event_title": "Julklappsspelet",
   "budget_info": "Secret Santa för familjen",
   "participants": [
-    { "name": "Andreas", "is_kid": false, "wishlist": "" },
-    { "name": "Lotta", "is_kid": false, "wishlist": "" },
-    { "name": "Caroline", "is_kid": false, "wishlist": "" },
-    { "name": "Simon", "is_kid": false, "wishlist": "" },
-    { "name": "Mikael", "is_kid": false, "wishlist": "" },
-    { "name": "Elsy", "is_kid": false, "wishlist": "" },
-    { "name": "Louise", "is_kid": true, "wishlist": "" },
-    { "name": "Josefin", "is_kid": true, "wishlist": "" },
-    { "name": "Elise", "is_kid": true, "wishlist": "" }
+    { "name": "Andreas", "is_kid": false, "wishlist": "", "invite_token": "6aUiDkIgmvy90ytS" },
+    { "name": "Lotta", "is_kid": false, "wishlist": "", "invite_token": "EBPHgRY1-VbBxBCj" },
+    { "name": "Caroline", "is_kid": false, "wishlist": "", "invite_token": "SH1Nb1BZXwJqiWOi" },
+    { "name": "Simon", "is_kid": false, "wishlist": "", "invite_token": "i_TWe3bOM1jKAl4c" },
+    { "name": "Mikael", "is_kid": false, "wishlist": "", "invite_token": "Dho2kWqpwrdl171e" },
+    { "name": "Elsy", "is_kid": false, "wishlist": "", "invite_token": "DzXipq2hhesU88tV" },
+    { "name": "Louise", "is_kid": true, "wishlist": "", "invite_token": "vX18tL4972qvXCx6" },
+    { "name": "Josefin", "is_kid": true, "wishlist": "", "invite_token": "223UD8-KdXGpDQxR" },
+    { "name": "Elise", "is_kid": true, "wishlist": "", "invite_token": "J2zLO2GOCYsUGj4P" }
   ],
   "exclusions": [
     ["Andreas", "Lotta"],

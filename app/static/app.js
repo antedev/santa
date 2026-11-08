@@ -49,7 +49,7 @@ function escapeHtml(str) {
 }
 
 function buildPersonalLink(token) {
-  return `${window.location.origin}/?u=${encodeURIComponent(token)}`;
+  return `https://santa.ante.pub/?u=${encodeURIComponent(token)}`;
 }
 
 // --- Snowflakes ---
@@ -593,6 +593,9 @@ window.removeExclusion = async function (exclId) {
 document.addEventListener("DOMContentLoaded", async () => {
   initSnowflakes();
   initTabs();
+  if (window.location.pathname.replace(/\/+$/, "") === "/admin") {
+    adminViewOpen = true;
+  }
   await checkInviteUrlToken();
   await loadState();
 
@@ -650,21 +653,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     adminViewOpen = false;
     document.getElementById("loginForm").classList.add("hidden");
     loadState();
-  });
-
-  // Discreet Admin Button in Footer
-  document.getElementById("openAdminFooterBtn").addEventListener("click", async () => {
-    adminViewOpen = !adminViewOpen;
-    if (adminViewOpen) {
-      await loadAdminInvites();
-      renderAdminPanel();
-    }
-    renderLayoutVisibility();
-    if (adminViewOpen) {
-      switchTab("tab-admin");
-    } else if (currentSession) {
-      switchTab("tab-my-santa");
-    }
   });
 
   document.getElementById("unlockAdminBtn").addEventListener("click", async () => {

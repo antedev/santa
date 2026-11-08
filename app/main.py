@@ -394,6 +394,7 @@ def _build_user_session_response(conn, user, password_clean: str) -> Dict[str, A
 # --- Routes ---
 
 @app.get("/")
+@app.get("/admin")
 def serve_index():
     return FileResponse(str(STATIC_DIR / "index.html"))
 

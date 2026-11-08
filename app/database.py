@@ -158,9 +158,10 @@ def load_seed_into_db(conn: sqlite3.Connection, seed_path: Path) -> None:
             continue
         is_kid = 1 if p.get("is_kid", False) else 0
         wishlist = p.get("wishlist", "").strip()
+        token = p.get("invite_token", "").strip() or generate_invite_token()
         cur = conn.execute(
             "INSERT INTO users (name, is_kid, wishlist, invite_token, password_salt) VALUES (?, ?, ?, ?, ?)",
-            (name, is_kid, wishlist, generate_invite_token(), generate_salt()),
+            (name, is_kid, wishlist, token, generate_salt()),
         )
         name_to_id[name.lower()] = cur.lastrowid
 
@@ -182,7 +183,7 @@ def load_seed_into_db(conn: sqlite3.Connection, seed_path: Path) -> None:
 
 
 def export_current_to_seed_dict(conn: sqlite3.Connection) -> Dict[str, Any]:
-    users = conn.execute("SELECT id, name, is_kid, wishlist FROM users ORDER BY is_kid ASC, id ASC").fetchall()
+    users = conn.execute("SELECT id, name, is_kid, wishlist, invite_token FROM users ORDER BY is_kid ASC, id ASC").fetchall()
     id_to_name = {u["id"]: u["name"] for u in users}
     exclusions_rows = conn.execute("SELECT user_a_id, user_b_id FROM exclusions ORDER BY id ASC").fetchall()
     exclusions: List[List[str]] = []
@@ -201,6 +202,7 @@ def export_current_to_seed_dict(conn: sqlite3.Connection) -> Dict[str, Any]:
                 "name": u["name"],
                 "is_kid": bool(u["is_kid"]),
                 "wishlist": u["wishlist"],
+                "invite_token": u["invite_token"],
             }
             for u in users
         ],
