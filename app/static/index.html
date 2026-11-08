@@ -20,7 +20,7 @@
   <nav id="mainNav" class="tabs hidden" role="tablist">
     <button class="tab-btn active" data-tab="tab-my-santa" role="tab">🎅 Min Julklapp</button>
     <button class="tab-btn" data-tab="tab-kids" role="tab">👶 Barnens önskelistor</button>
-    <button class="tab-btn" data-tab="tab-chain" role="tab">🎭 Täcknamn &amp; Status</button>
+    <button class="tab-btn hidden" data-tab="tab-chain" role="tab" style="display: none;">🎭 Täcknamn &amp; Status</button>
     <button id="adminTabBtn" class="tab-btn hidden" data-tab="tab-admin" role="tab">⚙️ Admin</button>
   </nav>
 
@@ -100,7 +100,7 @@
           <div id="myAliasCard" class="my-alias-highlight-card hidden">
             <span class="my-alias-label">🎭 Ditt hemliga täcknamn</span>
             <div class="my-alias-value" id="myAliasText"></div>
-            <span class="my-alias-hint">Det är det här namnet som är du under fliken <strong>🎭 Täcknamn &amp; Status</strong></span>
+            <span class="my-alias-hint hidden">Det är det här namnet som är du under fliken <strong>🎭 Täcknamn &amp; Status</strong></span>
           </div>
 
           <!-- Ready to spin the lottery wheel (Both Adults and Kids who want to join!) -->
@@ -160,8 +160,8 @@
         </div>
       </section>
 
-      <!-- TAB 3: TÄCKNAMN & STATUS (PUBLIC ALIAS STATUS WITHOUT LEAKING NEIGHBORS) -->
-      <section id="tab-chain" class="tab-panel">
+      <!-- TAB 3: TÄCKNAMN & STATUS (HIDDEN) -->
+      <section id="tab-chain" class="tab-panel hidden" style="display: none;">
         <div class="card">
           <h2>🎁 Har alla fått en Secret Santa?</h2>
           <p class="muted" id="santaReceivedSummary">
@@ -170,7 +170,7 @@
           <div id="recipientChecklistGrid" class="alias-status-grid"></div>
         </div>
 
-        <div class="card">
+        <div id="aliasStatusCard" class="card hidden">
           <h2>🎭 Täcknamn som dragit sin lott</h2>
           <p class="muted">
             Alla 6 vuxna är ihopkopplade i en enda sluten cirkel (ingen ger tillbaka till samma person som man får av).
@@ -273,6 +273,6 @@
     <span>🎄 Julklappsspelet</span>
   </footer>
 
-  <script src="/static/app.js?v=20261108-6"></script>
+  <script src="/static/app.js?v=20261108-7"></script>
 </body>
 </html>
