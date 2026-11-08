@@ -92,6 +92,7 @@ class LoginRequest(BaseModel):
     user_id: int
     password: str
     invite_token: Optional[str] = None
+    reset_pin: bool = False
 
 
 class WishlistUpdateRequest(BaseModel):
@@ -183,7 +184,7 @@ def _perform_draw_generation(
         alias_cycle.append(giver_alias)
 
         user_row = conn.execute(
-            "SELECT password_salt FROM users WHERE id = ?", (giver_id,)
+            "SELECT password_salt, invite_token FROM users WHERE id = ?", (giver_id,)
         ).fetchone()
         payload = {
             "target_id": target_id,
@@ -194,9 +195,12 @@ def _perform_draw_generation(
         ciphertext = encrypt_preclaim_assignment(
             payload, server_salt, giver_id, user_row["password_salt"]
         )
+        token_ciphertext = encrypt_payload(
+            payload, user_row["invite_token"], user_row["password_salt"]
+        )
         conn.execute(
-            "UPDATE users SET encrypted_assignment = ?, is_password_encrypted = 0, has_drawn_lot = 0 WHERE id = ?",
-            (ciphertext, giver_id),
+            "UPDATE users SET encrypted_assignment = ?, token_encrypted_assignment = ?, is_password_encrypted = 0, has_drawn_lot = 0 WHERE id = ?",
+            (ciphertext, token_ciphertext, giver_id),
         )
 
         dev_debug_cycle.append(
@@ -229,7 +233,7 @@ def _perform_draw_generation(
         target_alias = user_aliases[target_id]
 
         user_row = conn.execute(
-            "SELECT password_salt FROM users WHERE id = ?", (kid_id,)
+            "SELECT password_salt, invite_token FROM users WHERE id = ?", (kid_id,)
         ).fetchone()
         payload = {
             "target_id": target_id,
@@ -240,9 +244,12 @@ def _perform_draw_generation(
         ciphertext = encrypt_preclaim_assignment(
             payload, server_salt, kid_id, user_row["password_salt"]
         )
+        token_ciphertext = encrypt_payload(
+            payload, user_row["invite_token"], user_row["password_salt"]
+        )
         conn.execute(
-            "UPDATE users SET encrypted_assignment = ?, is_password_encrypted = 0, has_drawn_lot = 0 WHERE id = ?",
-            (ciphertext, kid_id),
+            "UPDATE users SET encrypted_assignment = ?, token_encrypted_assignment = ?, is_password_encrypted = 0, has_drawn_lot = 0 WHERE id = ?",
+            (ciphertext, token_ciphertext, kid_id),
         )
 
         dev_debug_cycle.append(
@@ -282,10 +289,16 @@ def _perform_draw_generation(
     }
 
 
-def _authenticate_user(conn, user_id: int, password: str, invite_token: Optional[str] = None):
+def _authenticate_user(
+    conn,
+    user_id: int,
+    password: str,
+    invite_token: Optional[str] = None,
+    reset_pin: bool = False,
+):
     password_clean = password.strip()
     if len(password_clean) < 2:
-        raise HTTPException(status_code=400, detail="Lösenordet/PIN-koden måste vara minst 2 tecken.")
+        raise HTTPException(status_code=400, detail="PIN-koden måste vara minst 2 tecken.")
 
     user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user:
@@ -293,21 +306,30 @@ def _authenticate_user(conn, user_id: int, password: str, invite_token: Optional
 
     server_salt = get_setting(conn, "server_salt")
 
-    if user["password_hash"] is None:
-        # First-time registration: MUST provide the user's unique invite_token so no one else can claim the account!
+    if user["password_hash"] is None or reset_pin:
+        # First-time registration OR resetting PIN via personal link
         if not invite_token or invite_token.strip() != user["invite_token"]:
             raise HTTPException(
                 status_code=403,
-                detail="Första gången du loggar in måste du öppna din personliga länk! Det garanterar att ingen annan kan logga in på ditt konto.",
+                detail="Använd din personliga länk för att välja eller återställa din PIN-kod.",
             )
         pw_hash = hash_password(password_clean, user["password_salt"])
-        if user["encrypted_assignment"] and not user["is_password_encrypted"]:
+        plain_payload = None
+        if user["token_encrypted_assignment"]:
+            plain_payload = decrypt_payload(
+                user["token_encrypted_assignment"],
+                user["invite_token"],
+                user["password_salt"],
+            )
+        elif user["encrypted_assignment"] and not user["is_password_encrypted"]:
             plain_payload = decrypt_preclaim_assignment(
                 user["encrypted_assignment"],
                 server_salt,
                 user["id"],
                 user["password_salt"],
             )
+
+        if plain_payload is not None:
             re_encrypted = encrypt_payload(plain_payload, password_clean, user["password_salt"])
             conn.execute(
                 "UPDATE users SET password_hash = ?, encrypted_assignment = ?, is_password_encrypted = 1 WHERE id = ?",
@@ -321,7 +343,7 @@ def _authenticate_user(conn, user_id: int, password: str, invite_token: Optional
         user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     else:
         if not verify_password(password_clean, user["password_salt"], user["password_hash"]):
-            raise HTTPException(status_code=401, detail="Fel lösenord eller PIN-kod! Försök igen.")
+            raise HTTPException(status_code=401, detail="Fel PIN-kod! Försök igen.")
         if user["encrypted_assignment"] and not user["is_password_encrypted"]:
             plain_payload = decrypt_preclaim_assignment(
                 user["encrypted_assignment"],
@@ -476,7 +498,7 @@ def login_user(req: LoginRequest):
     try:
         with conn:
             user, password_clean = _authenticate_user(
-                conn, req.user_id, req.password, req.invite_token
+                conn, req.user_id, req.password, req.invite_token, req.reset_pin
             )
             return _build_user_session_response(conn, user, password_clean)
     finally:

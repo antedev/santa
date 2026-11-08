@@ -53,6 +53,7 @@ def init_db(db_path: Optional[Path] = None, seed_path: Optional[Path] = None) ->
                 password_salt TEXT NOT NULL,
                 password_hash TEXT DEFAULT NULL,
                 encrypted_assignment TEXT DEFAULT NULL,
+                token_encrypted_assignment TEXT DEFAULT NULL,
                 is_password_encrypted INTEGER NOT NULL DEFAULT 0,
                 has_drawn_lot INTEGER NOT NULL DEFAULT 0
             );
@@ -82,6 +83,8 @@ def init_db(db_path: Optional[Path] = None, seed_path: Optional[Path] = None) ->
                     "UPDATE users SET invite_token = ? WHERE id = ?",
                     (generate_invite_token(), row["id"]),
                 )
+        if "token_encrypted_assignment" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN token_encrypted_assignment TEXT")
 
         alias_cols = [r["name"] for r in conn.execute("PRAGMA table_info(alias_board)").fetchall()]
         if "is_kid_bonus" not in alias_cols:

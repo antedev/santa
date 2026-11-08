@@ -33,24 +33,16 @@
         <!-- Personal Link Banner (Shown when opened via ?u=TOKEN) -->
         <div id="inviteBanner" class="hidden">
           <h2 class="center-title">Hej <span id="inviteUserName"></span>! 👋</h2>
-          <div id="inviteFirstTimeBadge" class="alert alert-locked" style="margin-bottom: 1rem;">
-            <strong>🔒 Personlig länk verifierad!</strong>
-            <p style="margin:0.25rem 0 0; font-size:0.9rem;">
-              Ingen har varit inne på ditt konto före dig. Välj en egen PIN-kod nedan för att låsa ditt konto!
-            </p>
-          </div>
-          <p id="inviteReturningText" class="muted center-text hidden">
-            Ditt konto är skyddat med din PIN-kod. Logga in nedan.
-          </p>
+          <p id="inviteSubtext" class="muted center-text">Välj en PIN-kod för att logga in.</p>
           <div style="text-align:center; margin-bottom:0.5rem;">
-            <button type="button" id="showAllUsersBtn" class="footer-link-btn">Inte du? Visa alla namn</button>
+            <button type="button" id="showAllUsersBtn" class="footer-link-btn">Byt person</button>
           </div>
         </div>
 
         <!-- Standard Name Picker (Shown when visiting root URL without ?u=TOKEN) -->
         <div id="namePickerArea">
           <h2 class="center-title">Vem är du?</h2>
-          <p class="muted center-text">Välj ditt namn eller öppna din personliga länk.</p>
+          <p class="muted center-text">Välj ditt namn nedan.</p>
 
           <div class="participant-grid" id="loginUserGrid"></div>
 
@@ -61,14 +53,16 @@
         </div>
 
         <div id="needInviteNotice" class="alert hidden" style="background: rgba(240, 194, 101, 0.14); border: 1px solid var(--gold); margin-top: 1.2rem;">
-          <strong>🔑 Första inloggningen kräver din personliga länk</strong>
-          <p style="margin:0.3rem 0 0; font-size:0.9rem;">
-            För att du ska kunna vara 100 % säker på att ingen annan har loggat in som dig måste du klicka på din personliga inbjudningslänk första gången du väljer din PIN-kod.
+          <p style="margin:0; font-size:0.92rem;">
+            Öppna din personliga länk första gången för att välja din PIN-kod.
           </p>
         </div>
 
         <form id="loginForm" class="login-form hidden">
-          <label for="loginPassword" id="passwordPromptLabel">PIN-kod / lösenord:</label>
+          <div style="display:flex; justify-content:space-between; align-items:baseline;">
+            <label for="loginPassword" id="passwordPromptLabel">PIN-kod:</label>
+            <button type="button" id="resetPinToggleBtn" class="footer-link-btn hidden">Glömt PIN? Välj ny</button>
+          </div>
           <div class="input-row">
             <input
               type="password"
@@ -78,7 +72,7 @@
               minlength="2"
               autocomplete="current-password"
             />
-            <button type="submit" class="btn btn-primary">Logga in 🎄</button>
+            <button type="submit" id="loginSubmitBtn" class="btn btn-primary">Logga in 🎄</button>
           </div>
         </form>
       </div>

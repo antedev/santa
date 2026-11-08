@@ -4,6 +4,7 @@ let appState = null;
 let selectedLoginUserId = null;
 let currentInviteToken = null; // From URL ?u=...
 let currentInviteInfo = null;  // { id, name, is_kid, has_account, invite_token }
+let resetPinMode = false;
 let currentSession = null;     // { user, assignment, password }
 let adminViewOpen = false;
 let adminInvitesCache = [];
@@ -174,10 +175,11 @@ function createNameTile(p) {
 function updateLoginFormPrompt(p) {
   const loginForm = document.getElementById("loginForm");
   const needInviteNotice = document.getElementById("needInviteNotice");
+  const resetPinToggleBtn = document.getElementById("resetPinToggleBtn");
+  const loginSubmitBtn = document.getElementById("loginSubmitBtn");
   const hasMatchingToken = currentInviteInfo && currentInviteInfo.id === p.id;
 
   if (!p.has_account && !hasMatchingToken) {
-    // First-time login without personal link -> block and explain!
     loginForm.classList.add("hidden");
     needInviteNotice.classList.remove("hidden");
     return;
@@ -185,9 +187,23 @@ function updateLoginFormPrompt(p) {
 
   needInviteNotice.classList.add("hidden");
   loginForm.classList.remove("hidden");
-  document.getElementById("passwordPromptLabel").textContent = p.has_account
-    ? `Ange din PIN-kod / lösenord, ${p.name}:`
-    : `Välj en egen PIN-kod / lösenord, ${p.name} (låser ditt konto):`;
+
+  // Show "Glömt PIN? Välj ny" if user is on their personal link and already has a PIN
+  if (p.has_account && hasMatchingToken) {
+    resetPinToggleBtn.classList.remove("hidden");
+    resetPinToggleBtn.textContent = resetPinMode ? "Avbryt" : "Glömt PIN? Välj ny";
+  } else {
+    resetPinMode = false;
+    resetPinToggleBtn.classList.add("hidden");
+  }
+
+  if (!p.has_account || resetPinMode) {
+    document.getElementById("passwordPromptLabel").textContent = `Välj ny PIN-kod:`;
+    loginSubmitBtn.textContent = "Spara & logga in 🎄";
+  } else {
+    document.getElementById("passwordPromptLabel").textContent = `Ange din PIN-kod:`;
+    loginSubmitBtn.textContent = "Logga in 🎄";
+  }
   document.getElementById("loginPassword").focus();
 }
 
@@ -198,7 +214,6 @@ function renderLoginScreen() {
   const kidsGrid = document.getElementById("loginKidsGrid");
   const kidsDivider = document.getElementById("kidsLoginDivider");
 
-  // If user arrived via personal link (?u=TOKEN)
   if (currentInviteInfo) {
     const freshUser = appState.participants.find((u) => u.id === currentInviteInfo.id);
     if (freshUser) {
@@ -207,12 +222,10 @@ function renderLoginScreen() {
       inviteBanner.classList.remove("hidden");
       namePickerArea.classList.add("hidden");
       document.getElementById("inviteUserName").textContent = freshUser.name;
-      document
-        .getElementById("inviteFirstTimeBadge")
-        .classList.toggle("hidden", freshUser.has_account);
-      document
-        .getElementById("inviteReturningText")
-        .classList.toggle("hidden", !freshUser.has_account);
+      document.getElementById("inviteSubtext").textContent =
+        !freshUser.has_account || resetPinMode
+          ? "Välj en PIN-kod för att logga in."
+          : "Ange din PIN-kod för att logga in.";
       updateLoginFormPrompt(freshUser);
       return;
     }
@@ -586,9 +599,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentInviteInfo = null;
     currentInviteToken = null;
     selectedLoginUserId = null;
+    resetPinMode = false;
     window.history.replaceState({}, "", "/");
     document.getElementById("loginForm").classList.add("hidden");
     document.getElementById("needInviteNotice").classList.add("hidden");
+    renderLoginScreen();
+  });
+
+  // Toggle Reset PIN mode when on personal link
+  document.getElementById("resetPinToggleBtn").addEventListener("click", () => {
+    resetPinMode = !resetPinMode;
     renderLoginScreen();
   });
 
@@ -602,12 +622,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         user_id: selectedLoginUserId,
         password,
         invite_token: currentInviteToken,
+        reset_pin: resetPinMode,
       });
       currentSession = {
         user: res.user,
         assignment: res.assignment,
         password,
       };
+      resetPinMode = false;
       adminViewOpen = false;
       document.getElementById("loginPassword").value = "";
       switchTab("tab-my-santa");

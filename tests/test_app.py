@@ -124,10 +124,23 @@ def test_full_workflow_invite_links_and_kids_bonus_lottery(tmp_path: Path, monke
         )
         assert re_login.status_code == 200
 
-        # 6. Adult draws their lot
+        # Resetting PIN via personal link works and preserves the exact same match
+        reset_res = client.post(
+            "/api/auth/login",
+            json={
+                "user_id": p1["id"],
+                "password": "ny-pin-9999",
+                "invite_token": p1_token,
+                "reset_pin": True,
+            },
+        )
+        assert reset_res.status_code == 200
+        assert reset_res.json()["assignment"]["target_name"] == login_data["assignment"]["target_name"]
+
+        # 6. Adult draws their lot (using the new PIN)
         draw_res = client.post(
             "/api/user/draw-lot",
-            json={"user_id": p1["id"], "password": "mitt-hemliga-losen"},
+            json={"user_id": p1["id"], "password": "ny-pin-9999"},
         )
         assert draw_res.status_code == 200
         assert draw_res.json()["user"]["has_drawn_lot"] is True
