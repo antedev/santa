@@ -1,3 +1,4 @@
+import hashlib
 import json
 import secrets
 import sqlite3
@@ -93,9 +94,23 @@ def init_db(db_path: Optional[Path] = None, seed_path: Optional[Path] = None) ->
         if not get_setting(conn, "server_salt"):
             set_setting(conn, "server_salt", generate_salt())
 
+        target_seed = seed_path or SEED_PATH
+        current_seed_hash = ""
+        if target_seed.exists():
+            current_seed_hash = hashlib.sha256(target_seed.read_bytes()).hexdigest()
+
         if not get_setting(conn, "initialized"):
-            load_seed_into_db(conn, seed_path or SEED_PATH)
+            load_seed_into_db(conn, target_seed)
             set_setting(conn, "initialized", "1")
+            set_setting(conn, "seed_hash", current_seed_hash)
+        elif (
+            current_seed_hash
+            and get_setting(conn, "seed_hash") != current_seed_hash
+            and get_setting(conn, "is_live", "0") == "0"
+        ):
+            # Automatically reload seed.json if it changed in git and the draw is not locked live yet
+            load_seed_into_db(conn, target_seed)
+            set_setting(conn, "seed_hash", current_seed_hash)
     conn.close()
 
 
