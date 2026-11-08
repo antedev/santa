@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Julklappsspelet</title>
-  <link rel="stylesheet" href="/static/style.css?v=20261108-2" />
+  <link rel="stylesheet" href="/static/style.css?v=20261108-3" />
 </head>
 <body>
   <div class="snow-container" id="snowContainer" aria-hidden="true"></div>
@@ -96,6 +96,13 @@
             <p class="muted">Du kan skriva din önskelista här nedanför så länge!</p>
           </div>
 
+          <!-- Always visible once draw is generated: User's secret alias -->
+          <div id="myAliasCard" class="my-alias-highlight-card hidden">
+            <span class="my-alias-label">🎭 Ditt hemliga täcknamn</span>
+            <div class="my-alias-value" id="myAliasText"></div>
+            <span class="my-alias-hint">Det är det här namnet som är du under fliken <strong>🔗 Kedjan</strong></span>
+          </div>
+
           <!-- Ready to spin the lottery wheel (Both Adults and Kids who want to join!) -->
           <div id="lotteryMachineBox" class="hidden center-box">
             <div class="santa-hat-icon">🎅✨</div>
@@ -113,14 +120,8 @@
             </button>
           </div>
 
-          <!-- Match Revealed (No replay button!) -->
+          <!-- Match Revealed -->
           <div id="matchRevealedBox" class="hidden">
-            <div class="my-alias-highlight-card">
-              <span class="my-alias-label">🎭 Ditt hemliga täcknamn</span>
-              <div class="my-alias-value" id="myAliasText"></div>
-              <span class="my-alias-hint">Det är det här namnet som är du under fliken <strong>🔗 Kedjan</strong></span>
-            </div>
-
             <div class="gift-reveal-card">
               <p class="reveal-overline" id="revealOverline">Du ska köpa en julklapp till:</p>
               <h2 class="reveal-target-name" id="targetPersonName"></h2>
@@ -264,6 +265,6 @@
     <span>🎄 Julklappsspelet</span>
   </footer>
 
-  <script src="/static/app.js?v=20261108-2"></script>
+  <script src="/static/app.js?v=20261108-3"></script>
 </body>
 </html>

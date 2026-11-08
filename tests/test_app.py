@@ -151,22 +151,24 @@ def test_full_workflow_invite_links_and_kids_bonus_lottery(tmp_path: Path, monke
         )
         assert alias_entry["has_drawn"] is True
 
-        # 7. Kid logs in via personal link and draws an optional bonus lot!
-        kid1 = kids[0]
-        kid_token = invites[kid1["id"]]
+        # 7. Kid (Elise) logs in via personal link and draws an optional bonus lot -> always gets Elsy!
+        elise = next(k for k in kids if k["name"] == "Elise")
+        elise_token = invites[elise["id"]]
         kid_login = client.post(
             "/api/auth/login",
-            json={"user_id": kid1["id"], "password": "1234", "invite_token": kid_token},
+            json={"user_id": elise["id"], "password": "1234", "invite_token": elise_token},
         )
         assert kid_login.status_code == 200
-        assert kid_login.json()["assignment"]["target_name"] != kid1["name"]
+        assert kid_login.json()["assignment"]["target_name"] == "Elsy"
+        assert kid_login.json()["assignment"]["my_alias"] != ""
 
         kid_draw = client.post(
             "/api/user/draw-lot",
-            json={"user_id": kid1["id"], "password": "1234"},
+            json={"user_id": elise["id"], "password": "1234"},
         )
         assert kid_draw.status_code == 200
         assert kid_draw.json()["user"]["has_drawn_lot"] is True
+        assert kid_draw.json()["assignment"]["target_name"] == "Elsy"
         kid_alias = kid_draw.json()["assignment"]["my_alias"]
 
         state_with_kid = client.get("/api/state").json()

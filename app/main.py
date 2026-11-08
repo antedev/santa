@@ -38,9 +38,13 @@ async def lifespan(app: FastAPI):
     conn = get_connection()
     try:
         with conn:
-            if get_setting(conn, "draw_generated", "0") == "0":
+            if (
+                get_setting(conn, "draw_generated", "0") == "0"
+                or get_setting(conn, "elise_elsy_rule", "0") != "1"
+            ):
                 try:
                     _perform_draw_generation(conn)
+                    set_setting(conn, "elise_elsy_rule", "1")
                 except MatchingError:
                     pass
     finally:
@@ -223,12 +227,20 @@ def _perform_draw_generation(
     else:
         rng.seed()
 
+    elsy_id = next(
+        (u["id"] for u in all_users if u["name"].strip().lower() == "elsy"),
+        None,
+    )
+
     for kid in kids:
         kid_id = kid["id"]
         possible_targets = [uid for uid in adult_ids if uid != kid_id]
         if not possible_targets:
             continue
-        target_id = rng.choice(possible_targets)
+        if kid["name"].strip().lower() == "elise" and elsy_id is not None:
+            target_id = elsy_id
+        else:
+            target_id = rng.choice(possible_targets)
         kid_alias = user_aliases[kid_id]
         target_alias = user_aliases[target_id]
 

@@ -271,17 +271,23 @@ function renderUserDashboard() {
   }
 
   const drawNotReadyBox = document.getElementById("drawNotReadyBox");
+  const myAliasCard = document.getElementById("myAliasCard");
   const lotteryMachineBox = document.getElementById("lotteryMachineBox");
   const matchRevealedBox = document.getElementById("matchRevealedBox");
 
   if (!appState.draw_generated || !assignment) {
     drawNotReadyBox.classList.remove("hidden");
+    myAliasCard.classList.add("hidden");
     lotteryMachineBox.classList.add("hidden");
     matchRevealedBox.classList.add("hidden");
     return;
   }
 
   drawNotReadyBox.classList.add("hidden");
+
+  // Always show user's secret alias right away, even before drawing!
+  myAliasCard.classList.remove("hidden");
+  document.getElementById("myAliasText").textContent = assignment.my_alias;
 
   // Customize copy slightly for kids vs adults
   if (user.is_kid) {
