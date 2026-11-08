@@ -424,23 +424,37 @@ textarea:focus {
 }
 
 /* Match Reveal Card */
-.alias-pill-row {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  margin-top: 1.1rem;
+.my-alias-highlight-card {
+  background: linear-gradient(135deg, rgba(240, 194, 101, 0.22) 0%, rgba(212, 159, 56, 0.1) 100%);
+  border: 2px solid var(--gold);
+  border-radius: 16px;
+  padding: 1.15rem 1rem;
+  text-align: center;
+  margin-bottom: 1.1rem;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 
-.alias-pill {
-  display: inline-block;
-  background: rgba(240, 194, 101, 0.12);
-  border: 1px solid var(--border-color);
+.my-alias-label {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+  font-weight: 700;
   color: var(--cream);
-  padding: 0.35rem 0.9rem;
-  border-radius: 999px;
-  font-size: 0.88rem;
+}
+
+.my-alias-value {
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  font-weight: 800;
+  color: var(--gold);
+  margin: 0.25rem 0;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.my-alias-hint {
+  display: block;
+  font-size: 0.84rem;
+  color: var(--text-muted);
 }
 
 .gift-reveal-card {

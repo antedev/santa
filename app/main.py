@@ -225,7 +225,7 @@ def _perform_draw_generation(
 
     for kid in kids:
         kid_id = kid["id"]
-        possible_targets = [uid for uid in all_ids if uid != kid_id]
+        possible_targets = [uid for uid in adult_ids if uid != kid_id]
         if not possible_targets:
             continue
         target_id = rng.choice(possible_targets)

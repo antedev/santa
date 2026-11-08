@@ -328,8 +328,10 @@ async function runLotteryWheelAnimation(finalName) {
   spinBtn.disabled = true;
   slotWindow.classList.add("spinning");
 
-  const names = appState.participants.map((p) => p.name);
-  const pool = names.length > 0 ? names : [finalName];
+  const adultNames = appState.participants
+    .filter((p) => !p.is_kid)
+    .map((p) => p.name);
+  const pool = adultNames.length > 0 ? adultNames : [finalName];
   const totalSteps = 22;
   for (let i = 0; i < totalSteps; i++) {
     const candidate = pool[i % pool.length];
